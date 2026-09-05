@@ -36,6 +36,8 @@ chassis = group('Chassis')
 blade = group('Blade')
 left = group('Wing_L')
 right = group('Wing_R')
+track_preview = group('Track_Assembly_Preview')
+track_shoe = group('TrackShoe')
 
 def finish(ob, name, mat, parent, bevel=0):
     ob.name=name
@@ -70,12 +72,24 @@ for side in [-1,1]:
     for y in [-.96,-.48,0,.48,.96]:
         cylinder('Road wheel',(x+side*.29,y,.51),.31,.08,steel,rotation=(0,math.pi/2,0))
         cylinder('Wheel hub',(x+side*.34,y,.51),.12,.09,yellow,rotation=(0,math.pi/2,0))
-    for i in range(13):
-        y=-1.25+i*.208
-        for z in [.11,.91]:
-            box('Track shoe',(x,y,z),(.66,.16,.095),rubber,bevel=.015)
-    for y in [-1.42,1.42]:
-        for z in [.33,.55,.76]: box('Curved track shoe',(x,y,z),(.64,.08,.15),rubber,bevel=.02)
+    for i in range(40):
+        radius=.44
+        distance=i*(4+2*math.pi*radius)/40
+        if distance<2:
+            z=.94; y=1-distance; angle=0
+        elif distance<2+math.pi*radius:
+            angle=(distance-2)/radius
+            z=.5+radius*math.cos(angle); y=-(1+radius*math.sin(angle))
+        elif distance<4+math.pi*radius:
+            z=.06; y=-1+(distance-2-math.pi*radius); angle=math.pi
+        else:
+            angle=math.pi+(distance-4-math.pi*radius)/radius
+            z=.5+radius*math.cos(angle); y=1-radius*math.sin(angle)
+        shoe=box('Preview track shoe',(x,y,z),(.68,.15,.10),rubber,track_preview,.015)
+        shoe.rotation_euler.x=angle
+
+box('Shoe plate',(0,0,0),(.68,.15,.10),rubber,track_shoe,.015)
+box('Raised grouser',(0,0,.064),(.64,.045,.035),rubber,track_shoe,.008)
 
 box('Lower body',(0,-.12,1.05),(1.7,2.35,.48),yellow,bevel=.12)
 box('Engine hood',(0,.7,1.41),(1.4,1.0,.45),yellow,bevel=.12)
@@ -99,15 +113,20 @@ for x in [-.68,.68]:
     box('Step',(x*1.1,-.89,1.1),(.35,.35,.1),steel)
 
 # Swept concave blade, open toward Blender +Y (glTF -Z).
-profile=[(2.18,.16),(2.01,.32),(1.91,.61),(1.96,.9),(2.10,1.12)]
+profile=[(2.18,.16),(2.01,.32),(1.91,.61),(1.96,.92),(2.10,1.16)]
+section=profile+[(y-.16,z) for y,z in reversed(profile)]
 verts=[]
 for x in [-1.6,1.6]:
-    for y,z in profile: verts.append((x,y,z))
-faces=[(i,i+1,i+6,i+5) for i in range(4)]
+    for y,z in section: verts.append((x,y,z))
+n=len(section)
+faces=[(i,(i+1)%n,(i+1)%n+n,i+n) for i in range(n)]
+faces.extend([tuple(reversed(range(n))),tuple(range(n,2*n))])
 mesh=bpy.data.meshes.new('Rolled blade mesh'); mesh.from_pydata(verts,[],faces); mesh.update()
 ob=bpy.data.objects.new('Rolled concave blade',mesh); bpy.context.collection.objects.link(ob)
 finish(ob,ob.name,yellow,blade)
-solid=ob.modifiers.new('Plate thickness','SOLIDIFY'); solid.thickness=.09
+bpy.ops.object.select_all(action='DESELECT'); ob.select_set(True)
+bpy.context.view_layer.objects.active=ob
+bpy.ops.object.mode_set(mode='EDIT'); bpy.ops.mesh.select_all(action='SELECT'); bpy.ops.mesh.normals_make_consistent(inside=False); bpy.ops.object.mode_set(mode='OBJECT')
 bevel=ob.modifiers.new('Safe edges','BEVEL'); bevel.width=.025; bevel.segments=2
 box('Replaceable cutting edge',(0,2.2,.17),(3.3,.16,.16),steel,blade,.025)
 box('Blade top rail',(0,2.1,1.12),(3.3,.14,.1),dark,blade,.025)
@@ -135,9 +154,10 @@ bpy.context.scene.render.film_transparent=True
 os.makedirs(os.path.join(ROOT,'public','models'),exist_ok=True)
 bpy.ops.wm.save_as_mainfile(filepath=os.path.join(ROOT,'art','gilt-dozer.blend'))
 bpy.ops.object.select_all(action='DESELECT')
-for parent in [chassis,blade,left,right]:
+for parent in [chassis,blade,left,right,track_shoe]:
     parent.select_set(True)
     for ob in parent.children_recursive: ob.select_set(True)
 bpy.ops.export_scene.gltf(filepath=os.path.join(ROOT,'public','models','gilt-dozer.glb'),export_format='GLB',use_selection=True,export_apply=True)
+for ob in track_shoe.children_recursive: ob.hide_render=True
 bpy.context.scene.render.filepath=os.path.join(ROOT,'art','dozer-preview.png')
 bpy.ops.render.render(write_still=True)

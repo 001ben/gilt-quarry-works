@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
+import { bakeModelPart } from "./model";
+import { sampleTrack, TRACK_LENGTH, TRACK_LINK_COUNT } from "./tracks";
 import { COLLECTOR, Simulation, UNIT } from "./simulation";
 import { GATES, SECTORS, stats } from "./progression";
 
@@ -22,7 +23,8 @@ export class QuarryView {
   model: THREE.Group | null = null;
   intake = new THREE.Group();
   gates: THREE.Group[] = [];
-  gemMeshes = new Map<number, THREE.Mesh>();
+  gemBatches: THREE.InstancedMesh[] = [];
+  tracks: { mesh: THREE.InstancedMesh; side: "left" | "right" }[] = [];
   dust: { mesh: THREE.Mesh; velocity: THREE.Vector3; life: number }[] = [];
   belts: THREE.Mesh[] = [];
   zoom = 1;
@@ -31,7 +33,9 @@ export class QuarryView {
   private target = new THREE.Vector3(0, 0, -1.5);
   private statsKey = "";
   private shadow: THREE.DirectionalLight;
-  private gemGeometry = new THREE.IcosahedronGeometry(1, 0);
+  private gemGeometry = new THREE.OctahedronGeometry(1, 0);
+  private dummy = new THREE.Object3D();
+  private density = new Float32Array(48 * 100);
   private gemMaterials = SECTORS.map(
     (s) =>
       new THREE.MeshStandardMaterial({
@@ -80,35 +84,46 @@ export class QuarryView {
     this.buildQuarry();
     this.buildIntake();
     this.scene.add(this.machine);
+    for (const [i, sector] of SECTORS.entries()) {
+      const batch = new THREE.InstancedMesh(
+        this.gemGeometry,
+        this.gemMaterials[i],
+        sector.count,
+      );
+      batch.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      batch.castShadow = true;
+      batch.receiveShadow = true;
+      batch.frustumCulled = false;
+      const color = new THREE.Color();
+      for (let index = 0; index < sector.count; index++)
+        batch.setColorAt(index, color.setScalar(0.78 + (index % 7) * 0.055));
+      this.gemBatches.push(batch);
+      this.scene.add(batch);
+    }
     this.resize();
   }
   async load() {
     const gltf = await new GLTFLoader().loadAsync("/models/gilt-dozer.glb");
-    // Bake static parts by material: preserve four upgrade groups, avoid a draw call per shoe.
+    // Static paintwork is batched separately from the moving track links.
     for (const name of ["Chassis", "Blade", "Wing_L", "Wing_R"]) {
       const source = gltf.scene.getObjectByName(name)!;
-      source.updateWorldMatrix(true, true);
-      const buckets = new Map<THREE.Material, THREE.BufferGeometry[]>();
-      source.traverse((obj) => {
-        if (!(obj instanceof THREE.Mesh)) return;
-        const mat = obj.material as THREE.Material;
-        const geometries = buckets.get(mat) ?? [];
-        geometries.push(obj.geometry.clone().applyMatrix4(obj.matrixWorld));
-        buckets.set(mat, geometries);
-      });
-      const group = new THREE.Group();
-      group.name = name;
-      for (const [mat, geometries] of buckets) {
-        const merged = mergeGeometries(geometries, false);
-        if (merged) {
-          const mesh = new THREE.Mesh(merged, mat);
-          mesh.castShadow = true;
-          mesh.receiveShadow = true;
-          group.add(mesh);
-        }
-        geometries.forEach((g) => g.dispose());
+      this.machine.add(bakeModelPart(source));
+    }
+    const shoe = bakeModelPart(gltf.scene.getObjectByName("TrackShoe")!);
+    for (const side of ["left", "right"] as const) {
+      for (const part of shoe.children as THREE.Mesh[]) {
+        const mesh = new THREE.InstancedMesh(
+          part.geometry,
+          part.material,
+          TRACK_LINK_COUNT,
+        );
+        mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        mesh.frustumCulled = false;
+        this.tracks.push({ mesh, side });
+        this.machine.add(mesh);
       }
-      this.machine.add(group);
     }
     this.model = this.machine;
     this.ready = true;
@@ -370,7 +385,7 @@ export class QuarryView {
     const mat =
       this.gemMaterials[SECTORS.findIndex((s) => s.color === color)] ??
       this.dustMaterial;
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 3 && this.dust.length < 200; i++) {
       const mesh = new THREE.Mesh(this.dustGeometry, mat);
       mesh.position.set(x / UNIT, 0.4, y / UNIT);
       this.scene.add(mesh);
@@ -413,29 +428,65 @@ export class QuarryView {
     this.gates.forEach((g, i) => {
       g.visible = this.sim.progress.sector <= i + 1;
     });
-    for (const [id, gem] of this.sim.gems) {
-      let mesh = this.gemMeshes.get(id);
-      if (!mesh) {
-        mesh = new THREE.Mesh(this.gemGeometry, this.gemMaterials[gem.sector]);
-        mesh.castShadow = true;
-        mesh.receiveShadow = true;
-        this.scene.add(mesh);
-        this.gemMeshes.set(id, mesh);
+    for (const track of this.tracks) {
+      for (let i = 0; i < TRACK_LINK_COUNT; i++) {
+        const point = sampleTrack(
+          (i * TRACK_LENGTH) / TRACK_LINK_COUNT -
+            this.sim.trackTravel[track.side],
+        );
+        this.dummy.position.set(
+          track.side === "left" ? -1 : 1,
+          point.y,
+          point.z,
+        );
+        this.dummy.rotation.set(point.angle, 0, 0);
+        this.dummy.scale.setScalar(1);
+        this.dummy.updateMatrix();
+        track.mesh.setMatrixAt(i, this.dummy.matrix);
       }
+      track.mesh.instanceMatrix.needsUpdate = true;
+    }
+    // Packing adds a little jostling without lifting loose gems away from the ground.
+    // Collision remains planar rather than vertical rigid-body stacking.
+    this.density.fill(0);
+    for (const gem of this.sim.gems.values()) {
+      const cellX = Math.floor((gem.body.position.x + 480) / 24),
+        cellY = Math.floor((gem.body.position.y + 1600) / 24);
+      this.density[cellY * 48 + cellX]++;
+    }
+    const counts = [0, 0, 0];
+    for (const [id, gem] of this.sim.gems) {
       const r = gem.radius / UNIT;
-      mesh.position.set(
+      const cellX = Math.floor((gem.body.position.x + 480) / 24),
+        cellY = Math.floor((gem.body.position.y + 1600) / 24);
+      let density = 0;
+      for (let dy = -1; dy <= 1; dy++)
+        for (let dx = -1; dx <= 1; dx++) {
+          density +=
+            ((this.density[(cellY + dy) * 48 + cellX + dx] ?? 0) *
+              (dx === 0 ? 2 : 1) *
+              (dy === 0 ? 2 : 1)) /
+            16;
+        }
+      const mound = Math.max(0, Math.min(r * 0.4, (density - 1) * 0.008));
+      const layer = (id * 0.61803398875) % 1;
+      this.dummy.position.set(
         gem.body.position.x / UNIT,
-        r * 0.65,
+        r * 0.85 + mound * layer,
         gem.body.position.y / UNIT,
       );
-      mesh.rotation.set(0.3 + id * 0.83, gem.body.angle, id * 0.49);
-      mesh.scale.set(r, r * (1.05 + (id % 3) * 0.2), r);
+      this.dummy.rotation.set(0.2 + id * 0.13, gem.body.angle, id * 0.19);
+      this.dummy.scale.set(r * 1.15, r * (1.3 + (id % 3) * 0.15), r * 1.15);
+      this.dummy.updateMatrix();
+      this.gemBatches[gem.sector].setMatrixAt(
+        counts[gem.sector]++,
+        this.dummy.matrix,
+      );
     }
-    for (const [id, mesh] of this.gemMeshes)
-      if (!this.sim.gems.has(id)) {
-        this.scene.remove(mesh);
-        this.gemMeshes.delete(id);
-      }
+    this.gemBatches.forEach((batch, i) => {
+      batch.count = counts[i];
+      batch.instanceMatrix.needsUpdate = true;
+    });
     if (this.sim.dozer.speed > 0.7 && Math.random() < dt * 15) {
       const mesh = new THREE.Mesh(this.dustGeometry, this.dustMaterial);
       mesh.position.set(

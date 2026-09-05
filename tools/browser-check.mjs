@@ -10,6 +10,9 @@ const page = await browser.newPage({
 });
 const errors = [];
 page.on("pageerror", (e) => errors.push(e.message));
+page.on("console", (message) => {
+  if (message.type() === "error") errors.push(message.text());
+});
 await page.goto(process.env.GILT_TEST_URL ?? "http://127.0.0.1:5173/", {
   waitUntil: "networkidle",
 });
@@ -17,9 +20,11 @@ await page.locator("#start").waitFor({ state: "visible", timeout: 30000 });
 await page.screenshot({ path: ".local/start-desktop.png" });
 await page.locator("#start").click();
 await page.locator("#world").focus();
-await page.keyboard.down("s");
-await page.waitForTimeout(1750);
-await page.keyboard.up("s");
+await page.keyboard.down("w");
+await page.waitForTimeout(650);
+await page.screenshot({ path: ".local/heap-push.png" });
+await page.waitForTimeout(1100);
+await page.keyboard.up("w");
 await page.keyboard.down("Space");
 await page.waitForTimeout(1500);
 await page.keyboard.up("Space");
@@ -27,7 +32,7 @@ await page.waitForTimeout(1000);
 await page.screenshot({ path: ".local/play-desktop.png" });
 const collected = await page.locator("#collected").innerText();
 assert.ok(
-  Number.parseInt(collected) >= 4,
+  Number.parseInt(collected) >= 60,
   `Expected physical delivery, saw ${collected}`,
 );
 await page.keyboard.press("e");
@@ -43,6 +48,11 @@ await page.keyboard.press("Escape");
 const before = JSON.parse(
   await page.evaluate(() => localStorage.getItem("gilt-quarry-v1")),
 );
+assert.equal(before.version, 2);
+assert.equal(
+  before.gems.length,
+  6300 - before.progress.collected.reduce((a, b) => a + b, 0),
+);
 await page.waitForTimeout(500);
 await page.reload({ waitUntil: "networkidle" });
 await page.locator("#start").waitFor({ state: "visible" });
@@ -54,7 +64,7 @@ assert.equal(
 );
 await page.setViewportSize({ width: 390, height: 844 });
 await page.waitForTimeout(400);
-const up = await page.locator('[data-dir="up"]').boundingBox();
+const up = await page.locator('[data-dir="down"]').boundingBox();
 await page.mouse.move(up.x + up.width / 2, up.y + up.height / 2);
 await page.mouse.down();
 await page.waitForTimeout(1300);
@@ -84,6 +94,9 @@ const victory = await browser.newPage({
   viewport: { width: 1440, height: 960 },
 });
 victory.on("pageerror", (e) => errors.push(e.message));
+victory.on("console", (message) => {
+  if (message.type() === "error") errors.push(message.text());
+});
 await victory.addInitScript(() => {
   localStorage.setItem(
     "gilt-quarry-v1",

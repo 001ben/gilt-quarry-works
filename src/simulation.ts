@@ -9,7 +9,8 @@ import {
   Upgrade,
   upgradeCost,
 } from "./progression";
-const { Bodies, Body, Composite, Engine } = Matter;
+import { generateGemLayout } from "./gems";
+const { Bodies, Body, Composite, Engine, Sleeping } = Matter;
 export const UNIT = 30;
 export const COLLECTOR = { x: 0, y: 245 };
 export interface Gem {
@@ -25,7 +26,7 @@ export type GameEvent =
   | { type: "upgrade"; kind: string }
   | { type: "victory" };
 export interface SaveData {
-  version: 1;
+  version: 2;
   progress: Progress;
   machine: { x: number; y: number; angle: number };
   gems: { id: number; x: number; y: number; angle: number }[];
@@ -33,16 +34,20 @@ export interface SaveData {
 export function parseSave(raw: string | null): SaveData | null {
   if (!raw) return null;
   try {
-    const s = JSON.parse(raw) as SaveData,
+    const s = JSON.parse(raw) as Omit<SaveData, "version"> & {
+        version: number;
+      },
       p = s.progress;
     if (
-      s.version !== 1 ||
+      (s.version !== 1 && s.version !== 2) ||
       !p ||
       !p.levels ||
       !s.machine ||
       !Array.isArray(s.gems)
     )
       return null;
+    const counts =
+      s.version === 1 ? [60, 75, 90] : SECTORS.map((zone) => zone.count);
     const finite = (v: unknown): v is number =>
       typeof v === "number" && Number.isFinite(v);
     if (
@@ -66,7 +71,7 @@ export function parseSave(raw: string | null): SaveData | null {
       !Array.isArray(p.collected) ||
       p.collected.length !== 3 ||
       !p.collected.every(
-        (v, i) => Number.isInteger(v) && v >= 0 && v <= SECTORS[i].count,
+        (v, i) => Number.isInteger(v) && v >= 0 && v <= counts[i],
       )
     )
       return null;
@@ -91,7 +96,7 @@ export function parseSave(raw: string | null): SaveData | null {
       if (
         !Number.isInteger(g.id) ||
         g.id < 0 ||
-        g.id >= 225 ||
+        g.id >= counts.reduce((a, b) => a + b, 0) ||
         ids.has(g.id) ||
         ![g.x, g.y, g.angle].every(finite) ||
         Math.abs(g.x) > 450 ||
@@ -100,12 +105,29 @@ export function parseSave(raw: string | null): SaveData | null {
       )
         return null;
       ids.add(g.id);
-      remaining[g.id < 60 ? 0 : g.id < 135 ? 1 : 2]++;
+      remaining[g.id < counts[0] ? 0 : g.id < counts[0] + counts[1] ? 1 : 2]++;
     }
-    if (!remaining.every((n, i) => n + p.collected[i] === SECTORS[i].count))
+    if (!remaining.every((n, i) => n + p.collected[i] === counts[i]))
       return null;
     if (p.victory !== (s.gems.length === 0)) return null;
-    return s;
+    if (s.version === 1) {
+      // Keep funds, equipment and clearance fractions when moving to the denser layout.
+      const progress = structuredClone(p);
+      progress.collected = p.collected.map((n, i) =>
+        Math.round((n / counts[i]) * SECTORS[i].count),
+      );
+      const skipped = [0, 0, 0];
+      const gems = generateGemLayout().filter(
+        (g) => skipped[g.sector]++ >= progress.collected[g.sector],
+      );
+      return {
+        version: 2,
+        progress,
+        machine: s.machine,
+        gems: gems.map(({ id, x, y, angle }) => ({ id, x, y, angle })),
+      };
+    }
+    return { ...s, version: 2 };
   } catch {
     return null;
   }
@@ -113,6 +135,7 @@ export function parseSave(raw: string | null): SaveData | null {
 
 export class Simulation {
   engine = Engine.create({
+    enableSleeping: true,
     gravity: { x: 0, y: 0 },
     positionIterations: 8,
     velocityIterations: 8,
@@ -124,6 +147,7 @@ export class Simulation {
   gates: Matter.Body[] = [];
   events: GameEvent[] = [];
   tick = 0;
+  trackTravel = { left: 0, right: 0 };
   constructor(save: SaveData | null = null) {
     this.progress = save ? structuredClone(save.progress) : freshProgress();
     const wall = (x: number, y: number, w: number, h: number) =>
@@ -141,42 +165,27 @@ export class Simulation {
     this.rebuildGates();
     this.rebuildDozer();
     if (save) this.teleport(save.machine.x, save.machine.y, save.machine.angle);
-    let seed = 7159;
-    const random = () => {
-      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
-      return seed / 4294967296;
-    };
     const stored = save ? new Map(save.gems.map((g) => [g.id, g])) : null;
-    let id = 0;
-    for (let sector = 0; sector < 3; sector++) {
-      const zone = SECTORS[sector];
-      for (let i = 0; i < zone.count; i++, id++) {
-        const radius = 7.3 + random() * 3.3;
-        let x = -335 + random() * 670,
-          y = zone.minY + random() * (zone.maxY - zone.minY);
-        // The first delivery is visible straight ahead, teaching the loop through play.
-        if (sector === 0 && i < 8) {
-          x = ((i % 4) - 1.5) * 19;
-          y = 132 + Math.floor(i / 4) * 20;
-        }
-        const initialAngle = random() * Math.PI;
-        const persisted = stored?.get(id);
-        if (stored && !persisted) continue;
-        if (persisted) {
-          x = persisted.x;
-          y = persisted.y;
-        }
-        const body = Bodies.circle(x, y, radius, {
-          density: 0.0009,
-          friction: 0.05,
-          frictionAir: 0.035,
-          restitution: 0.16,
-          label: "gem",
-        });
-        Body.setAngle(body, persisted?.angle ?? initialAngle);
-        this.gems.set(id, { id, sector, body, radius, value: zone.value });
-        Composite.add(this.engine.world, body);
+    for (const seed of generateGemLayout()) {
+      const { id, sector, radius, value } = seed;
+      let { x, y } = seed;
+      const persisted = stored?.get(id);
+      if (stored && !persisted) continue;
+      if (persisted) {
+        x = persisted.x;
+        y = persisted.y;
       }
+      const body = Bodies.circle(x, y, radius, {
+        density: 0.0009,
+        friction: 0.05,
+        frictionAir: 0.07,
+        restitution: 0.04,
+        label: "gem",
+      });
+      Body.setAngle(body, persisted?.angle ?? seed.angle);
+      Sleeping.set(body, true);
+      this.gems.set(id, { id, sector, body, radius, value });
+      Composite.add(this.engine.world, body);
     }
   }
   get position() {
@@ -239,22 +248,26 @@ export class Simulation {
     });
     Body.setVelocity(this.dozer, { x: 0, y: 0 });
   }
-  update(input: { x: number; y: number; brake: boolean }) {
+  update(input: { throttle: number; steer: number; brake: boolean }) {
     this.tick++;
     const s = stats(this.progress),
       b = this.dozer;
-    const magnitude = Math.hypot(input.x, input.y);
-    if (magnitude > 0.05 && !input.brake) {
-      const target = Math.atan2(input.x, -input.y);
-      const delta = Math.atan2(
-        Math.sin(target - b.angle),
-        Math.cos(target - b.angle),
-      );
-      Body.setAngle(b, b.angle + Math.max(-0.055, Math.min(0.055, delta)));
+    const previous = { ...this.position, angle: b.angle };
+    if (input.throttle || input.steer) Sleeping.set(b, false);
+    if (!input.brake) {
+      const yaw = Math.max(-1, Math.min(1, input.steer)) * 0.035;
+      Body.setAngle(b, b.angle + yaw);
+      // Steer about the chassis, not the blade-shifted compound centre of mass.
+      Body.translate(b, {
+        x: previous.x - this.position.x,
+        y: previous.y - this.position.y,
+      });
+    }
+    if (Math.abs(input.throttle) > 0.05 && !input.brake) {
       const forward = { x: Math.sin(b.angle), y: -Math.cos(b.angle) };
       const speed = b.velocity.x * forward.x + b.velocity.y * forward.y;
-      const alignment = Math.max(0.15, Math.cos(delta));
-      const desired = s.maxSpeed * Math.min(1, magnitude) * alignment;
+      const throttle = Math.max(-1, Math.min(1, input.throttle));
+      const desired = s.maxSpeed * throttle * (throttle < 0 ? 0.7 : 1);
       const next =
         speed + Math.max(-0.16, Math.min(s.acceleration, desired - speed));
       const side = {
@@ -272,6 +285,14 @@ export class Simulation {
     const intake = stats(this.progress);
     for (const gem of this.gems.values()) {
       const p = gem.body.position;
+      // Wake an approaching heap before contact: a slow blade otherwise treats sleeping
+      // stones as immovable until it exceeds Matter's collision-wake threshold.
+      if (
+        gem.body.isSleeping &&
+        (p.x - this.position.x) ** 2 + (p.y - this.position.y) ** 2 < 260 ** 2
+      ) {
+        Sleeping.set(gem.body, false);
+      }
       if (
         Math.abs(p.x) < intake.intakeWidth / 2 &&
         Math.abs(p.y - COLLECTOR.y) < intake.intakeDepth / 2
@@ -280,6 +301,7 @@ export class Simulation {
           x: -p.x * 0.055,
           y: (COLLECTOR.y - p.y) * 0.075,
         });
+        Sleeping.set(gem.body, false);
       }
       if (
         this.progress.levels.intake >= 4 &&
@@ -288,9 +310,19 @@ export class Simulation {
         p.y < COLLECTOR.y
       ) {
         Body.setVelocity(gem.body, { x: -p.x * 0.04, y: 1.6 });
+        Sleeping.set(gem.body, false);
       }
     }
     Engine.update(this.engine, 1000 / 60);
+    const heading = (previous.angle + b.angle) / 2;
+    const travel =
+      ((this.position.x - previous.x) * Math.sin(heading) -
+        (this.position.y - previous.y) * Math.cos(heading)) /
+      (UNIT * s.scale);
+    const turn = b.angle - previous.angle;
+    // Measured ground travel: reverse reverses the chain; a pivot counter-rotates its sides.
+    this.trackTravel.left += travel + turn;
+    this.trackTravel.right += travel - turn;
     for (const gem of this.gems.values()) {
       const p = gem.body.position;
       if (Math.abs(p.x) < 35 && Math.abs(p.y - COLLECTOR.y) < 24)
@@ -344,7 +376,7 @@ export class Simulation {
   }
   snapshot(): SaveData {
     return {
-      version: 1,
+      version: 2,
       progress: structuredClone(this.progress),
       machine: { ...this.position, angle: this.dozer.angle },
       gems: [...this.gems.values()].map((g) => ({

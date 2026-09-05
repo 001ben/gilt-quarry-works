@@ -6,7 +6,14 @@ import "@fontsource/dm-sans/latin-600.css";
 import "@fontsource/dm-sans/latin-700.css";
 import "./style.css";
 import { GameAudio } from "./audio";
-import { gateCost, SECTORS, stats, Upgrade, upgradeCost } from "./progression";
+import {
+  gateCost,
+  SECTORS,
+  stats,
+  TOTAL_GEMS,
+  Upgrade,
+  upgradeCost,
+} from "./progression";
 import { parseSave, Simulation } from "./simulation";
 import { QuarryView } from "./world";
 
@@ -23,7 +30,7 @@ let sim = new Simulation(restored);
 const audio = new GameAudio();
 const app = document.querySelector<HTMLDivElement>("#app")!;
 app.innerHTML = `
-  <canvas id="world" aria-label="3D quarry. Drive with WASD or arrow keys. Push gems into the deposit conveyor." tabindex="0"></canvas>
+  <canvas id="world" aria-label="3D quarry. W forward, S reverse. Left and right arrows steer. Push gems into the deposit conveyor." tabindex="0"></canvas>
   <div class="vignette"></div>
   <header class="topbar">
     <a class="brand" href="#" aria-label="GILT Quarry Works"><span class="brand-mark">◇</span><strong>GILT<span>QUARRY WORKS</span></strong></a>
@@ -45,12 +52,12 @@ app.innerHTML = `
     <div class="progress-track"><span id="progress-fill"></span></div>
     <div class="contract-footer"><span id="bonus">HALFWAY BONUS</span><strong id="bonus-value">+$120</strong></div>
   </section>
-  <div class="bottom-center"><span class="direction-tip" id="tip">Push the first blue gems forward onto the deposit belt.</span><div class="key-guide"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><span>drive</span><i></i><kbd>SPACE</kbd><span>brake</span><i></i><kbd>E</kbd><span>workshop</span></div></div>
+  <div class="bottom-center"><span class="direction-tip" id="tip">Hold W to push the first heap onto the deposit.</span><div class="key-guide"><kbd>W</kbd><kbd>S</kbd><span>forward / reverse</span><i></i><kbd>←</kbd><kbd>→</kbd><span>steer</span><i></i><kbd>SPACE</kbd><span>brake</span></div></div>
   <button id="workshop" class="workshop-button"><span class="workshop-icon">⚒</span><span><small>BUILD SOMETHING BIGGER</small><strong>Workshop <span>↗</span></strong></span><kbd>E</kbd></button>
-  <div id="touch-controls" aria-label="Touch driving controls"><button data-dir="up" aria-label="Drive north">↑</button><button data-dir="left" aria-label="Drive west">←</button><button data-dir="down" aria-label="Drive south">↓</button><button data-dir="right" aria-label="Drive east">→</button><button data-dir="brake" aria-label="Brake">■</button></div>
+  <div id="touch-controls" aria-label="Touch driving controls"><button data-dir="up" aria-label="Drive forward">↑</button><button data-dir="left" aria-label="Steer left">←</button><button data-dir="down" aria-label="Reverse">↓</button><button data-dir="right" aria-label="Steer right">→</button><button data-dir="brake" aria-label="Brake">■</button></div>
   <div id="toast" role="status" aria-live="polite"></div>
   <div id="loading"><span class="loader"></span><strong>Opening the quarry</strong><span>Unloading your machine…</span></div>
-  <div class="welcome" id="welcome" hidden><div class="eyebrow">A LITTLE MACHINE. A LOT OF POSSIBILITY.</div><h1>Your quarry.<br>Your rules.</h1><p>Push gems. Grow your machine.<br>Turn a quiet patch of dirt into an empire.</p><button class="primary" id="start">${restored ? "Continue your shift" : "Start your shift"} <span>→</span></button><small>WASD / ARROWS TO DRIVE · SPACE TO BRAKE</small></div>
+  <div class="welcome" id="welcome" hidden><div class="eyebrow">A LITTLE MACHINE. A LOT OF POSSIBILITY.</div><h1>Your quarry.<br>Your rules.</h1><p>Push gems. Grow your machine.<br>Turn a quiet patch of dirt into an empire.</p><button class="primary" id="start">${restored ? "Continue your shift" : "Start your shift"} <span>→</span></button><small>W / S FORWARD & REVERSE · ← / → STEER</small></div>
   <dialog id="panel"><div id="panel-content"></div></dialog>
 `;
 const $ = <T extends HTMLElement = HTMLElement>(id: string) =>
@@ -67,6 +74,8 @@ let last = performance.now(),
   lastHud = 0,
   lastSave = 0,
   toastTimer = 0;
+let pendingPayout = { value: 0, x: 0, y: 0 },
+  lastPayout = 0;
 const dialog = $<HTMLDialogElement>("panel");
 const money = (v: number) => "$" + Math.floor(v).toLocaleString("en-US");
 function toast(text: string) {
@@ -130,7 +139,7 @@ function updateHud() {
   $("workshop").classList.toggle("affordable", affordable);
   $("tip").textContent =
     p.collected.reduce((a, b) => a + b, 0) === 0
-      ? "Push the first blue gems forward onto the deposit belt."
+      ? "Hold W to push the first heap onto the deposit."
       : affordable
         ? "An upgrade is ready. Open the workshop with E."
         : sector > 0
@@ -207,11 +216,11 @@ function openPanel(kind: NonNullable<typeof modal>) {
         "A good day’s work.",
         "The blade does the gathering. The deposit does the selling.",
       ) +
-      `<div class="instructions"><p><b>01 / Sweep</b>Hold WASD or arrows to drive in that direction. Your dozer turns toward it. Space brakes.</p><p><b>02 / Deliver</b>Push gems onto the striped belt near the south end. Belts pull them into the dark hopper and pay you immediately.</p><p><b>03 / Grow</b>Press E for the workshop. Upgrade your engine, widen the blade, extend your conveyors, then open richer sectors.</p><p><b>04 / Finish</b>Clear all 225 gems to earn a fully upgraded victory lap. Every sector awards a halfway bonus.</p></div><div class="shortcut-list">C · camera &nbsp; / &nbsp; Scroll · zoom &nbsp; / &nbsp; M · sound &nbsp; / &nbsp; Esc · pause</div><p class="panel-note">Progress saves on this browser. On touch screens, use the directional pad.</p><button class="primary resume">Back to the quarry →</button>`;
+      `<div class="instructions"><p><b>01 / Sweep</b>W drives forward and S reverses without turning around. Left / right arrows steer; A / D also work. Space brakes.</p><p><b>02 / Deliver</b>Push gems onto the striped belt near the south end. Belts pull them into the dark hopper and pay you immediately.</p><p><b>03 / Grow</b>Press E for the workshop. Upgrade your engine, widen the blade, extend your conveyors, then open richer sectors.</p><p><b>04 / Finish</b>Clear all ${TOTAL_GEMS.toLocaleString()} gems to earn a fully upgraded victory lap. Every sector awards a halfway bonus.</p></div><div class="shortcut-list">C · camera &nbsp; / &nbsp; Scroll · zoom &nbsp; / &nbsp; M · sound &nbsp; / &nbsp; Esc · pause</div><p class="panel-note">Progress saves on this browser. On touch screens, use the directional pad.</p><button class="primary resume">Back to the quarry →</button>`;
   } else if (kind === "victory") {
     $("panel-content").innerHTML =
       header(
-        "225 GEMS. ONE MIGHTY MACHINE.",
+        `${TOTAL_GEMS.toLocaleString()} GEMS. ONE MIGHTY MACHINE.`,
         "You moved mountains.",
         `All three sectors cleared. ${money(sim.progress.earned)} earned. Time to enjoy what you built.`,
       ) +
@@ -255,6 +264,7 @@ function openPanel(kind: NonNullable<typeof modal>) {
   $("open-manual")?.addEventListener("click", () => openPanel("help"));
 }
 function newShift(sandbox: boolean) {
+  pendingPayout.value = 0;
   sim = new Simulation();
   if (sandbox) {
     sim.progress.levels = { engine: 5, blade: 5, intake: 5 };
@@ -264,8 +274,6 @@ function newShift(sandbox: boolean) {
     sim.rebuildGates();
   }
   view.sim = sim;
-  view.gemMeshes.forEach((m) => view.scene.remove(m));
-  view.gemMeshes.clear();
   closePanel();
   save();
   updateHud();
@@ -298,6 +306,10 @@ $("start").addEventListener("click", () => {
   canvas.focus();
   if (saved && !restored)
     toast("The previous save could not be read. A fresh quarry is ready.");
+  else if (saved && JSON.parse(saved).version === 1)
+    toast(
+      "Denser heaps are ready. Your funds, upgrades and clearance progress are kept.",
+    );
   if (sim.progress.victory) openPanel("victory");
 });
 $("workshop").addEventListener("click", () => openPanel("shop"));
@@ -434,12 +446,12 @@ function frame(now: number) {
     accumulator = Math.min(accumulator + dt, 0.1);
     const down = (...codes: string[]) => codes.some((c) => keys.has(c));
     const input = {
-      x:
+      steer:
         Number(down("KeyD", "ArrowRight") || touch.has("right")) -
         Number(down("KeyA", "ArrowLeft") || touch.has("left")),
-      y:
-        Number(down("KeyS", "ArrowDown") || touch.has("down")) -
-        Number(down("KeyW", "ArrowUp") || touch.has("up")),
+      throttle:
+        Number(down("KeyW", "ArrowUp") || touch.has("up")) -
+        Number(down("KeyS", "ArrowDown") || touch.has("down")),
       brake: down("Space") || touch.has("brake"),
     };
     while (accumulator >= 1 / 60) {
@@ -447,11 +459,15 @@ function frame(now: number) {
       accumulator -= 1 / 60;
     }
   } else accumulator = 0;
+  let collectedValue = 0,
+    collectedX = 0,
+    collectedY = 0;
   for (const event of sim.events.splice(0)) {
     if (event.type === "collect") {
       view.burst(event.x, event.y, event.color);
-      coinEffect(event.x, event.y, event.value);
-      audio.coin();
+      collectedValue += event.value;
+      collectedX = event.x;
+      collectedY = event.y;
     }
     if (event.type === "notice") toast(event.text);
     if (event.type === "upgrade")
@@ -465,6 +481,17 @@ function frame(now: number) {
       save();
       openPanel("victory");
     }
+  }
+  if (collectedValue > 0) {
+    pendingPayout.value += collectedValue;
+    pendingPayout.x = collectedX;
+    pendingPayout.y = collectedY;
+  }
+  if (pendingPayout.value > 0 && now - lastPayout >= 120) {
+    coinEffect(pendingPayout.x, pendingPayout.y, pendingPayout.value);
+    audio.coin();
+    pendingPayout.value = 0;
+    lastPayout = now;
   }
   audio.update(sim.dozer.speed, paused);
   view.render(paused ? 0 : dt, now / 1000);

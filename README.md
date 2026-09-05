@@ -19,7 +19,8 @@ Open the local address Vite prints. For a production build, run `npm run build`,
 
 | Control | Action |
 | --- | --- |
-| WASD / arrow keys | Drive toward a world direction; the machine turns toward it |
+| W / S (or up / down arrows) | Forward / reverse relative to the machine |
+| Left / right arrows (or A / D) | Steer, including pivot turns at rest |
 | Space | Brake |
 | E | Workshop |
 | C | Follow / quarry overview camera |
@@ -28,16 +29,17 @@ Open the local address Vite prints. For a production build, run `npm run build`,
 | Escape | Pause / resume |
 | ? | Operator's manual |
 
-Touch devices have a directional pad and brake. Start your shift, then hold south to push the first blue gems onto the marked deposit belt. Buying equipment pauses the simulation. Upgrades are explicit button purchases, available from anywhere in the quarry.
+Touch devices have forward, reverse, steering and brake buttons. Start your shift, then hold W to push the first blue heap onto the marked deposit belt. Buying equipment pauses the simulation. Upgrades are explicit button purchases, available from anywhere in the quarry.
 
 ## The campaign
 
-- 225 physical gems across Quartz Flats, Citrine Cut and Amethyst Reach.
+- 6,300 small physical gems in packed heaps: 1,800 quartz, 2,100 citrine and 2,400 amethyst.
+- Two continuous 40-link track chains follow measured ground travel, reverse direction, and counter-rotate during pivot turns.
 - Five engine/chassis levels, five blade widths (with wings from level three), and five working collector configurations.
 - Two gates, purchasable with earnings or free after the preceding sector is completely cleared.
 - Half-clearance contract bonuses, collection particles, flying payouts and synthesized sound.
 - Completion screen and a fresh fully upgraded victory lap.
-- Automatic browser-local saves: remaining gems and their positions, money, upgrades, contracts and machine position. New quarry reset requires an explicit confirmation.
+- Automatic browser-local saves: remaining gems and their positions, money, upgrades, contracts and machine position. Original sparse-layout saves migrate funds, equipment and clearance fractions to the new heap layout. New quarry reset requires an explicit confirmation.
 
 The simulation is planar Matter.js physics with a Three.js presentation; it is not deformable terrain or a full vehicle dynamics simulator. Actual mobile-device performance and subjective campaign pacing remain to be evaluated beyond the included browser viewport checks.
 
@@ -49,7 +51,7 @@ The simulation is planar Matter.js physics with a Three.js presentation; it is n
 & 'C:/Program Files/Blender Foundation/Blender 5.0/blender.exe' --background --python art/build_assets.py
 ```
 
-The renderer combines static meshes by material while preserving the chassis, blade and two wing groups for progression. Both visual and physical dimensions come from `src/progression.ts`.
+The renderer combines compatible static meshes by material while preserving the chassis, blade and two wing groups for progression. Missing UV attributes are normalized so the procedural plow plate cannot disappear during batching. The plow is a closed, thick, concave solid with end caps. A separate Blender-authored shoe is instanced along both track loops. Both visual and physical dimensions come from `src/progression.ts`.
 
 ## Verification and design
 
@@ -58,6 +60,7 @@ npm test
 npm run build
 # With the dev server running on port 5173 and Microsoft Edge installed:
 node tools/browser-check.mjs
+node tools/machinery-check.mjs
 ```
 
 See [design and source study](docs/design.md) and [verification results](docs/verification.md). The original repository lives only in an ignored local `.reference` folder during development; none of its code or assets are shipped here.
@@ -69,6 +72,8 @@ See [design and source study](docs/design.md) and [verification results](docs/ve
 | `src/progression.ts` | Sector definitions, prices and shared machinery dimensions |
 | `src/simulation.ts` | Physics, purchases, collections and validated saves |
 | `src/world.ts` | Quarry geometry, Blender model loading, rendering and camera |
+| `src/model.ts` / `src/tracks.ts` | Safe model batching and constant-spacing track loops |
+| `src/gems.ts` | Deterministic packed-heap layout |
 | `src/main.ts` | Inputs, HUD, menus, save lifecycle and game loop |
 | `src/audio.ts` | Procedural engine and feedback sounds |
 | `art/` | Reproducible original Blender assets |

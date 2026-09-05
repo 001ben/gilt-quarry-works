@@ -13,8 +13,8 @@ export const SECTORS = [
   {
     name: "Quartz flats",
     mineral: "Quartz",
-    count: 60,
-    value: 12,
+    count: 1800,
+    value: 1,
     color: 0x6ed8cf,
     minY: -340,
     maxY: 115,
@@ -23,8 +23,8 @@ export const SECTORS = [
   {
     name: "Citrine cut",
     mineral: "Citrine",
-    count: 75,
-    value: 28,
+    count: 2100,
+    value: 2,
     color: 0xf3bd51,
     minY: -920,
     maxY: -500,
@@ -33,14 +33,18 @@ export const SECTORS = [
   {
     name: "Amethyst reach",
     mineral: "Amethyst",
-    count: 90,
-    value: 65,
+    count: 2400,
+    value: 4,
     color: 0xb099e9,
     minY: -1490,
     maxY: -1070,
     bonus: 500,
   },
 ] as const;
+export const TOTAL_GEMS = SECTORS.reduce(
+  (sum, sector) => sum + sector.count,
+  0,
+);
 export const GATES = [-420, -990];
 export function freshProgress(): Progress {
   return {
