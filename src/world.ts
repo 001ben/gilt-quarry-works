@@ -1,5 +1,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { createConveyor, animateConveyor, createMagnet } from "./equipment";
+import { UpgradePlatforms } from "./platforms";
 import { bakeModelPart } from "./model";
 import { sampleTrack, TRACK_LENGTH, TRACK_LINK_COUNT } from "./tracks";
 import { COLLECTOR, Simulation, UNIT } from "./simulation";
@@ -27,6 +29,10 @@ export class QuarryView {
   tracks: { mesh: THREE.InstancedMesh; side: "left" | "right" }[] = [];
   dust: { mesh: THREE.Mesh; velocity: THREE.Vector3; life: number }[] = [];
   belts: THREE.Mesh[] = [];
+  platforms!: UpgradePlatforms;
+  private elapsed = 0;
+  private magnet = createMagnet();
+  private field = new THREE.Group();
   zoom = 1;
   cameraMode: "follow" | "overview" = "follow";
   ready = false;
@@ -125,6 +131,23 @@ export class QuarryView {
         this.machine.add(mesh);
       }
     }
+    this.machine.add(this.magnet, this.field);
+    for (let i = 0; i < 3; i++) {
+      const arc = new THREE.Mesh(
+        new THREE.RingGeometry(0.97, 1, 48, 1, 0, Math.PI),
+        new THREE.MeshBasicMaterial({
+          color: 0x9effef,
+          transparent: true,
+          opacity: 0.3,
+          depthWrite: false,
+          side: THREE.DoubleSide,
+        }),
+      );
+      arc.rotation.x = -Math.PI / 2;
+      this.field.add(arc);
+    }
+    this.platforms = new UpgradePlatforms(this.machine);
+    this.scene.add(this.platforms.group);
     this.model = this.machine;
     this.ready = true;
     this.statsKey = "";
@@ -284,7 +307,7 @@ export class QuarryView {
     }
     // Field workshop, utility tanks and a small depot on the safe rear edge.
     const shop = new THREE.Group();
-    shop.position.set(-11.3, 0, 9.2);
+    shop.position.set(-11.3, 0, 10.7);
     this.box(shop, 0, 0.05, 0, 5.8, 0.1, 5, 0xb59576, false);
     this.box(shop, 0, 1.3, 1.2, 4.6, 2.6, 2.3, C.pine);
     this.box(shop, 0, 2.7, 1.05, 5, 0.22, 2.9, C.cream);
@@ -294,11 +317,19 @@ export class QuarryView {
     for (let x of [-1.05, 1.05])
       this.box(shop, x, 0.025, -1.5, 0.09, 0.04, 1.6, C.cream, false);
     this.scene.add(shop);
-    this.label("WORKSHOP", -11.3, 2.84, 10.1, 4.3, "#304f43");
-    this.label("SERVICE BAY", -11.3, 0.13, 7.9, 4.3, "#ede0bf");
+    this.label("WORKSHOP", -11.3, 2.84, 11.6, 4.3, "#304f43");
     for (let i = 0; i < 3; i++) {
-      this.box(this.scene, 10.5 + i * 1.25, 0.55, 10, 1, 1.1, 1, C.pine);
-      this.box(this.scene, 10.5 + i * 1.25, 1.12, 10, 1.04, 0.1, 1.04, C.cream);
+      this.box(this.scene, 10.5 + i * 1.25, 0.55, 11.25, 1, 1.1, 1, C.pine);
+      this.box(
+        this.scene,
+        10.5 + i * 1.25,
+        1.12,
+        11.25,
+        1.04,
+        0.1,
+        1.04,
+        C.cream,
+      );
     }
     // Crane silhouette at the depot, deliberately outside the driving surface.
     this.box(this.scene, 17, 3.6, 8, 0.3, 7.2, 0.3, C.dark);
@@ -316,45 +347,15 @@ export class QuarryView {
     });
     this.intake.clear();
     this.belts = [];
-    const s = stats(this.sim.progress),
-      width = s.intakeWidth / UNIT,
-      depth = s.intakeDepth / UNIT;
-    this.intake.position.set(0, 0, COLLECTOR.y / UNIT);
-    this.box(
-      this.intake,
-      0,
-      0.025,
-      0,
-      width + 0.3,
-      0.05,
-      depth + 0.25,
-      C.yellow,
-      false,
+    const s = stats(this.sim.progress);
+    const belt = createConveyor(
+      s.intakeWidth / UNIT,
+      s.intakeDepth / UNIT,
+      s.feederLength / UNIT,
     );
-    this.box(this.intake, 0, 0.07, 0, width, 0.08, depth, C.dark, false);
-    for (let x = -width / 2 + 0.1; x < width / 2; x += 0.32) {
-      const belt = this.box(
-        this.intake,
-        x,
-        0.12,
-        0,
-        0.05,
-        0.02,
-        depth - 0.15,
-        0x748579,
-        false,
-      );
-      this.belts.push(belt);
-    }
-    this.box(this.intake, 0, 0.14, 0, 2.25, 0.1, 1.5, 0x172c29, false);
-    for (let x of [-1.17, 1.17])
-      this.box(this.intake, x, 0.27, 0, 0.15, 0.3, 1.75, C.cream);
-    this.box(this.intake, 0, 0.3, 0.88, 2.5, 0.4, 0.16, C.pine);
-    if (this.sim.progress.levels.intake >= 4) {
-      this.box(this.intake, 0, 0.08, -2.8, 1.8, 0.1, 3.5, C.dark, false);
-      for (let z = -4.4; z < -1.1; z += 0.35)
-        this.box(this.intake, 0, 0.14, z, 1.65, 0.02, 0.05, 0x748579, false);
-    }
+    this.intake.add(belt.group);
+    this.belts = belt.slats;
+    this.intake.position.set(0, 0, COLLECTOR.y / UNIT);
     this.scene.add(this.intake);
     if (!this.scene.getObjectByName("intake-label"))
       this.label("↓  DEPOSIT  ↓", 0, 0.022, 6.9, 4.4, "#f8edcf").name =
@@ -364,7 +365,7 @@ export class QuarryView {
     const w = this.canvas.clientWidth,
       h = this.canvas.clientHeight;
     this.renderer.setSize(w, h, false);
-    const viewHeight = (w < 700 ? 37 : 28) / this.zoom,
+    const viewHeight = (h < 500 ? 19 : w < 700 ? 37 : 28) / this.zoom,
       aspect = w / h;
     this.camera.left = (-viewHeight * aspect) / 2;
     this.camera.right = (viewHeight * aspect) / 2;
@@ -400,7 +401,9 @@ export class QuarryView {
       });
     }
   }
-  render(dt: number, time: number) {
+  render(dt: number, _time: number) {
+    this.elapsed += dt;
+    const time = this.elapsed;
     const p = this.sim.position,
       s = stats(this.sim.progress);
     this.machine.position.set(
@@ -426,7 +429,20 @@ export class QuarryView {
       this.buildIntake();
     }
     this.gates.forEach((g, i) => {
-      g.visible = this.sim.progress.sector <= i + 1;
+      const t = this.sim.gateOpening[i];
+      g.position.y = -2.6 * (t * t * (3 - 2 * t));
+      g.visible = t < 1;
+    });
+    animateConveyor(this.belts, time);
+    this.platforms?.render(this.sim, time);
+    this.magnet.visible = this.sim.progress.levels.magnet > 0;
+    this.field.visible = this.magnet.visible;
+    this.field.children.forEach((arc, i) => {
+      const phase = (time * 0.55 + i / 3) % 1;
+      arc.position.set(0, 0.16, -2.85);
+      arc.scale.setScalar(((1 - phase) * s.magnetRange) / (UNIT * s.scale));
+      ((arc as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity =
+        Math.sin(phase * Math.PI) * 0.28;
     });
     for (const track of this.tracks) {
       for (let i = 0; i < TRACK_LINK_COUNT; i++) {
@@ -512,7 +528,8 @@ export class QuarryView {
         this.dust.splice(i, 1);
       }
     }
-    const mobile = this.canvas.clientWidth < 700;
+    const mobile =
+      this.canvas.clientWidth < 700 || matchMedia("(pointer: coarse)").matches;
     const follow = new THREE.Vector3(
       (p.x / UNIT) * (mobile ? 1 : 0.36),
       0,

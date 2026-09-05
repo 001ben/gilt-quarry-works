@@ -6,14 +6,7 @@ import "@fontsource/dm-sans/latin-600.css";
 import "@fontsource/dm-sans/latin-700.css";
 import "./style.css";
 import { GameAudio } from "./audio";
-import {
-  gateCost,
-  SECTORS,
-  stats,
-  TOTAL_GEMS,
-  Upgrade,
-  upgradeCost,
-} from "./progression";
+import { PADS, padCost, padDetail, SECTORS, TOTAL_GEMS } from "./progression";
 import { parseSave, Simulation } from "./simulation";
 import { QuarryView } from "./world";
 
@@ -43,17 +36,17 @@ app.innerHTML = `
     <button id="help" title="Controls (?)" aria-label="Show controls">?</button>
     <button id="pause" title="Pause (Escape)" aria-label="Pause game">Ⅱ</button>
   </nav>
-  <div class="sector-tag"><span class="diamond">◆</span><span id="mineral">QUARTZ</span><span id="gem-value">$12 / GEM</span></div>
+  <div class="sector-tag"><span class="diamond">◆</span><span id="mineral">QUARTZ</span><span id="gem-value">$1 / GEM</span></div>
   <section class="contract" id="contract">
     <div class="eyebrow"><span>YOUR FIRST CONTRACT</span><span id="contract-number">01—03</span></div>
     <h2 id="contract-title">Make room for more.</h2>
     <p id="contract-copy">Push quartz onto the striped deposit belt.</p>
-    <div class="progress-line"><span id="collected">0 / 60 collected</span><span id="percent">0%</span></div>
+    <div class="progress-line"><span id="collected">0 / 1800 collected</span><span id="percent">0%</span></div>
     <div class="progress-track"><span id="progress-fill"></span></div>
     <div class="contract-footer"><span id="bonus">HALFWAY BONUS</span><strong id="bonus-value">+$120</strong></div>
   </section>
   <div class="bottom-center"><span class="direction-tip" id="tip">Hold W to push the first heap onto the deposit.</span><div class="key-guide"><kbd>W</kbd><kbd>S</kbd><span>forward / reverse</span><i></i><kbd>←</kbd><kbd>→</kbd><span>steer</span><i></i><kbd>SPACE</kbd><span>brake</span></div></div>
-  <button id="workshop" class="workshop-button"><span class="workshop-icon">⚒</span><span><small>BUILD SOMETHING BIGGER</small><strong>Workshop <span>↗</span></strong></span><kbd>E</kbd></button>
+  <aside class="pad-guide" id="pad-guide"><div class="eyebrow" id="pad-status">DRIVE-ON UPGRADES</div><strong id="pad-name">Find a glowing platform</strong><p id="pad-detail">Park on a pad to fund your next part.</p><div class="progress-track"><span id="pad-fill"></span></div><div class="pad-payment"><span id="pad-paid"></span><span id="pad-distance"></span></div></aside>
   <div id="touch-controls" aria-label="Touch driving controls"><button data-dir="up" aria-label="Drive forward">↑</button><button data-dir="left" aria-label="Steer left">←</button><button data-dir="down" aria-label="Reverse">↓</button><button data-dir="right" aria-label="Steer right">→</button><button data-dir="brake" aria-label="Brake">■</button></div>
   <div id="toast" role="status" aria-live="polite"></div>
   <div id="loading"><span class="loader"></span><strong>Opening the quarry</strong><span>Unloading your machine…</span></div>
@@ -66,7 +59,7 @@ const canvas = $<HTMLCanvasElement>("world");
 let view: QuarryView;
 let started = false,
   paused = true,
-  modal: "shop" | "help" | "pause" | "victory" | "reset" | null = null;
+  modal: "help" | "pause" | "victory" | "reset" | null = null;
 let keys = new Set<string>(),
   touch = new Set<string>();
 let last = performance.now(),
@@ -122,7 +115,7 @@ function updateHud() {
   $("contract-copy").textContent =
     count === zone.count
       ? p.sector < 3
-        ? "Open the next sector in the workshop."
+        ? "Drive onto the key platform by the next gate."
         : "Every gem counts. Finish the remaining sectors."
       : `Push ${zone.mineral.toLowerCase()} onto the striped deposit belt.`;
   $("collected").textContent = `${count} / ${zone.count} collected`;
@@ -132,21 +125,59 @@ function updateHud() {
     ? "CONTRACT BONUS EARNED"
     : "HALFWAY BONUS";
   $("bonus-value").textContent = `+$${zone.bonus}`;
-  const affordable = (["engine", "blade", "intake"] as Upgrade[]).some((k) => {
-    const cost = upgradeCost(p, k);
-    return cost !== null && p.money >= cost;
-  });
-  $("workshop").classList.toggle("affordable", affordable);
+  const nearest = PADS.filter((pad) => padCost(p, pad.id) !== null).sort(
+    (a, b) =>
+      Math.hypot(a.x - sim.position.x, a.y - sim.position.y) -
+      Math.hypot(b.x - sim.position.x, b.y - sim.position.y),
+  )[0];
+  const pad = PADS.find((pad) => pad.id === sim.activePad) ?? nearest;
+  $("pad-guide").hidden = !pad;
+  if (pad) {
+    const cost = padCost(p, pad.id),
+      paid = p.funding[pad.id];
+    const onPad = sim.activePad === pad.id;
+    $("pad-status").textContent = onPad
+      ? cost === null || sim.padCompleted
+        ? "FITTED - DRIVE OFF TO CONTINUE"
+        : p.money
+          ? "FUNDING - STAY ON THE PLATFORM"
+          : "FUNDING SAVED - BRING MORE GEMS"
+      : "NEAREST UPGRADE PLATFORM";
+    $("pad-name").textContent = pad.name;
+    $("pad-detail").textContent = padDetail(p, pad.id);
+    $("pad-paid").textContent =
+      cost === null
+        ? "Complete"
+        : cost === 0
+          ? "Free unlock"
+          : money(paid) + " / " + money(cost);
+    $("pad-fill").style.width =
+      (cost === null ? 100 : cost ? (paid / cost) * 100 : 0) + "%";
+    const dx = pad.x - sim.position.x,
+      dy = pad.y - sim.position.y;
+    $("pad-distance").textContent = onPad
+      ? "ON PLATFORM"
+      : Math.round(Math.hypot(dx, dy) / 30) +
+        " m / " +
+        (Math.abs(dx) > Math.abs(dy)
+          ? dx > 0
+            ? "EAST"
+            : "WEST"
+          : dy > 0
+            ? "SOUTH"
+            : "NORTH");
+    $("pad-guide").classList.toggle("funding", onPad);
+  }
   $("tip").textContent =
     p.collected.reduce((a, b) => a + b, 0) === 0
       ? "Hold W to push the first heap onto the deposit."
-      : affordable
-        ? "An upgrade is ready. Open the workshop with E."
-        : sector > 0
-          ? "Bring your haul south to the deposit."
-          : p.sector > 1
-            ? "Head north through the open gate for richer gems."
-            : "Sweep wide, then bring your haul to the deposit.";
+      : sim.padCompleted
+        ? "Upgrade fitted. Drive off and return for the next level."
+        : sim.activePad
+          ? "Brake to stay on the pad. Partial payments are saved."
+          : sector > 0
+            ? "Bring your haul south to the deposit."
+            : "Park on a glowing platform to build your next upgrade.";
 }
 function closePanel() {
   dialog.close();
@@ -164,59 +195,14 @@ function openPanel(kind: NonNullable<typeof modal>) {
   touch.clear();
   const header = (eyebrow: string, title: string, copy: string) =>
     `<div class="panel-top"><span class="eyebrow">${eyebrow}</span><button class="close" aria-label="Close panel">×</button></div><h2>${title}</h2><p class="panel-copy">${copy}</p>`;
-  if (kind === "shop") {
-    const p = sim.progress;
-    const descriptions: Record<
-      Upgrade,
-      { icon: string; name: string; copy: string; metric: string }
-    > = {
-      engine: {
-        icon: "↗",
-        name: "Engine & chassis",
-        copy: "More pulling power. A bigger machine.",
-        metric: `${stats(p).maxSpeed.toFixed(1)} → ${(stats(p).maxSpeed + 0.62).toFixed(1)} top speed`,
-      },
-      blade: {
-        icon: "⊔",
-        name: "Wide sweep blade",
-        copy:
-          p.levels.blade === 2
-            ? "Add flared wings to keep your haul together."
-            : "A wider bite with matching physical reach.",
-        metric: `${stats(p).bladeWidth.toFixed(1)} m working width`,
-      },
-      intake: {
-        icon: "⇥",
-        name: "Collector conveyors",
-        copy:
-          p.levels.intake === 3
-            ? "Add a forward conveyor to catch more gems."
-            : "Longer belts carry gems into the hopper.",
-        metric: `${(stats(p).intakeWidth / 30).toFixed(1)} m receiving span`,
-      },
-    };
-    $("panel-content").innerHTML =
-      header(
-        "THE WORKSHOP",
-        "Make it yours.",
-        `Every upgrade earns its place. <strong class="shop-balance">${money(p.money)} available</strong>`,
-      ) +
-      `<div class="upgrade-list">${(["engine", "blade", "intake"] as Upgrade[])
-        .map((k) => {
-          const d = descriptions[k],
-            cost = upgradeCost(p, k);
-          return `<button class="upgrade" data-buy="${k}" ${cost === null || cost > p.money ? "disabled" : ""}><span class="upgrade-icon">${d.icon}</span><span class="upgrade-info"><span class="upgrade-name">${d.name}<small>LV ${p.levels[k]} / 5</small></span><span>${d.copy}</span><small class="metric">${cost === null ? "Fully upgraded" : d.metric}</small></span><strong>${cost === null ? "MAX" : money(cost)}<small>${cost === null ? "COMPLETE" : cost > p.money ? "SAVE UP" : "UPGRADE ↗"}</small></strong></button>`;
-        })
-        .join("")}</div>` +
-      `<div class="gate-card"><span class="eyebrow">THE NEXT HORIZON</span><h3>${p.sector === 3 ? "The whole quarry is yours." : SECTORS[p.sector].name}</h3><p>${p.sector === 3 ? "Clear every sector to earn your victory lap." : `Richer ${SECTORS[p.sector].mineral.toLowerCase()} · $${SECTORS[p.sector].value} per gem. Opens free when you clear the current sector.`}</p><button class="primary" data-buy="gate" ${gateCost(p) === null || (gateCost(p) ?? Infinity) > p.money ? "disabled" : ""}>${gateCost(p) === null ? "ALL SECTORS OPEN" : `Open sector 0${p.sector + 1} <span>${money(gateCost(p)!)}</span>`}</button></div><small class="panel-note">Purchases are deliberate. Your shift pauses while you choose.</small>`;
-  } else if (kind === "help") {
+  if (kind === "help") {
     $("panel-content").innerHTML =
       header(
         "OPERATOR’S MANUAL",
         "A good day’s work.",
         "The blade does the gathering. The deposit does the selling.",
       ) +
-      `<div class="instructions"><p><b>01 / Sweep</b>W drives forward and S reverses without turning around. Left / right arrows steer; A / D also work. Space brakes.</p><p><b>02 / Deliver</b>Push gems onto the striped belt near the south end. Belts pull them into the dark hopper and pay you immediately.</p><p><b>03 / Grow</b>Press E for the workshop. Upgrade your engine, widen the blade, extend your conveyors, then open richer sectors.</p><p><b>04 / Finish</b>Clear all ${TOTAL_GEMS.toLocaleString()} gems to earn a fully upgraded victory lap. Every sector awards a halfway bonus.</p></div><div class="shortcut-list">C · camera &nbsp; / &nbsp; Scroll · zoom &nbsp; / &nbsp; M · sound &nbsp; / &nbsp; Esc · pause</div><p class="panel-note">Progress saves on this browser. On touch screens, use the directional pad.</p><button class="primary resume">Back to the quarry →</button>`;
+      `<div class="instructions"><p><b>01 / Sweep</b>W drives forward and S reverses without turning around. Left / right arrows steer; A / D also work. Space brakes.</p><p><b>02 / Deliver</b>Push gems onto the striped belt near the south end. Belts pull them into the dark hopper and pay you immediately.</p><p><b>03 / Grow</b>Park on a glowing platform to fund the rotating part above it. Money transfers gradually; partial funding is saved. Drive off and return for the next level. Find the key pads beside the gates. Add a magnet to draw stragglers in front of your plow.</p><p><b>04 / Finish</b>Clear all ${TOTAL_GEMS.toLocaleString()} gems to earn a fully upgraded victory lap. Every sector awards a halfway bonus.</p></div><div class="shortcut-list">C · camera &nbsp; / &nbsp; Scroll · zoom &nbsp; / &nbsp; M · sound &nbsp; / &nbsp; Esc · pause</div><p class="panel-note">Progress saves on this browser. On touch screens, use the directional pad.</p><button class="primary resume">Back to the quarry →</button>`;
   } else if (kind === "victory") {
     $("panel-content").innerHTML =
       header(
@@ -247,17 +233,6 @@ function openPanel(kind: NonNullable<typeof modal>) {
   dialog
     .querySelectorAll(".resume")
     .forEach((b) => b.addEventListener("click", closePanel));
-  dialog.querySelectorAll<HTMLButtonElement>("[data-buy]").forEach((b) =>
-    b.addEventListener("click", () => {
-      const kind = b.dataset.buy as Upgrade | "gate";
-      if (sim.purchase(kind)) {
-        audio.upgrade();
-        save();
-        updateHud();
-        openPanel("shop");
-      }
-    }),
-  );
   $("reset")?.addEventListener("click", () => openPanel("reset"));
   $("confirm-reset")?.addEventListener("click", () => newShift(false));
   $("victory-lap")?.addEventListener("click", () => newShift(true));
@@ -267,10 +242,11 @@ function newShift(sandbox: boolean) {
   pendingPayout.value = 0;
   sim = new Simulation();
   if (sandbox) {
-    sim.progress.levels = { engine: 5, blade: 5, intake: 5 };
+    sim.progress.levels = { engine: 5, blade: 5, intake: 5, magnet: 5 };
     sim.progress.sector = 3;
     sim.progress.sandbox = true;
     sim.rebuildDozer();
+    sim.gateOpening = [1, 1];
     sim.rebuildGates();
   }
   view.sim = sim;
@@ -312,7 +288,6 @@ $("start").addEventListener("click", () => {
     );
   if (sim.progress.victory) openPanel("victory");
 });
-$("workshop").addEventListener("click", () => openPanel("shop"));
 $("help").addEventListener("click", () => openPanel("help"));
 $("pause").addEventListener("click", () => {
   if (modal) closePanel();
@@ -348,11 +323,6 @@ window.addEventListener("keydown", (e) => {
       save();
       openPanel("pause");
     }
-    return;
-  }
-  if (e.code === "KeyE") {
-    if (modal === "shop") closePanel();
-    else openPanel("shop");
     return;
   }
   if (e.code === "KeyM") {
@@ -470,12 +440,15 @@ function frame(now: number) {
       collectedY = event.y;
     }
     if (event.type === "notice") toast(event.text);
-    if (event.type === "upgrade")
+    if (event.type === "upgrade") {
+      audio.upgrade();
+      save();
       toast(
         event.kind === "gate"
-          ? "The gate is open. Head north."
+          ? "Key unlocked. The gate is lowering."
           : "Upgrade fitted. Back to work.",
       );
+    }
     if (event.type === "victory") {
       audio.upgrade();
       save();

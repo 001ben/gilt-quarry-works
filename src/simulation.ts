@@ -1,6 +1,10 @@
 import Matter from "matter-js";
 import {
   freshProgress,
+  emptyFunding,
+  PADS,
+  PadId,
+  padCost,
   gateCost,
   GATES,
   Progress,
@@ -26,7 +30,8 @@ export type GameEvent =
   | { type: "upgrade"; kind: string }
   | { type: "victory" };
 export interface SaveData {
-  version: 2;
+  version: 3;
+  completedPad?: PadId;
   progress: Progress;
   machine: { x: number; y: number; angle: number };
   gems: { id: number; x: number; y: number; angle: number }[];
@@ -39,7 +44,7 @@ export function parseSave(raw: string | null): SaveData | null {
       },
       p = s.progress;
     if (
-      (s.version !== 1 && s.version !== 2) ||
+      (s.version !== 1 && s.version !== 2 && s.version !== 3) ||
       !p ||
       !p.levels ||
       !s.machine ||
@@ -65,6 +70,29 @@ export function parseSave(raw: string | null): SaveData | null {
           p.levels[k as Upgrade] >= 1 &&
           p.levels[k as Upgrade] <= 5,
       )
+    )
+      return null;
+    if (s.version < 3) {
+      p.levels.magnet = 0;
+      p.funding = emptyFunding();
+    }
+    if (
+      !Number.isInteger(p.levels.magnet) ||
+      p.levels.magnet < 0 ||
+      p.levels.magnet > 5 ||
+      !p.funding ||
+      !PADS.every(
+        ({ id }) =>
+          finite(p.funding[id]) &&
+          p.funding[id] >= 0 &&
+          p.funding[id] <=
+            (id === "gate1"
+              ? 350
+              : id === "gate2"
+                ? 1100
+                : (upgradeCost(p, id) ?? 0)),
+      ) ||
+      Object.values(p.funding).reduce((a, b) => a + b, 0) + p.money > p.earned
     )
       return null;
     if (
@@ -121,13 +149,13 @@ export function parseSave(raw: string | null): SaveData | null {
         (g) => skipped[g.sector]++ >= progress.collected[g.sector],
       );
       return {
-        version: 2,
+        version: 3,
         progress,
         machine: s.machine,
         gems: gems.map(({ id, x, y, angle }) => ({ id, x, y, angle })),
       };
     }
-    return { ...s, version: 2 };
+    return { ...s, version: 3 };
   } catch {
     return null;
   }
@@ -147,6 +175,10 @@ export class Simulation {
   gates: Matter.Body[] = [];
   events: GameEvent[] = [];
   tick = 0;
+  activePad: PadId | null = null;
+  private padTicks = 0;
+  padCompleted = false;
+  gateOpening = [0, 0];
   trackTravel = { left: 0, right: 0 };
   constructor(save: SaveData | null = null) {
     this.progress = save ? structuredClone(save.progress) : freshProgress();
@@ -162,9 +194,24 @@ export class Simulation {
       wall(0, -1577, 968, 34),
       wall(0, 377, 968, 34),
     ]);
+    this.gateOpening = GATES.map((_, i) =>
+      this.progress.sector > i + 1 ? 1 : 0,
+    );
     this.rebuildGates();
     this.rebuildDozer();
-    if (save) this.teleport(save.machine.x, save.machine.y, save.machine.angle);
+    if (save) {
+      this.teleport(save.machine.x, save.machine.y, save.machine.angle);
+      const pad = PADS.find(
+        (p) =>
+          p.id === save.completedPad &&
+          Math.abs(p.x - this.position.x) < 47 &&
+          Math.abs(p.y - this.position.y) < 47,
+      );
+      if (pad) {
+        this.activePad = pad.id;
+        this.padCompleted = true;
+      }
+    }
     const stored = save ? new Map(save.gems.map((g) => [g.id, g])) : null;
     for (const seed of generateGemLayout()) {
       const { id, sector, radius, value } = seed;
@@ -193,8 +240,10 @@ export class Simulation {
   }
   rebuildGates() {
     for (const g of this.gates) Composite.remove(this.engine.world, g);
-    this.gates = GATES.filter((_, i) => this.progress.sector <= i + 1).map(
-      (y) => Bodies.rectangle(0, y, 900, 20, { isStatic: true, label: "gate" }),
+    this.gates = GATES.filter(
+      (_, i) => this.progress.sector <= i + 1 || this.gateOpening[i] < 1,
+    ).map((y) =>
+      Bodies.rectangle(0, y, 900, 20, { isStatic: true, label: "gate" }),
     );
     Composite.add(this.engine.world, this.gates);
   }
@@ -282,7 +331,18 @@ export class Simulation {
       const drag = input.brake ? 0.72 : 0.94;
       Body.setVelocity(b, { x: b.velocity.x * drag, y: b.velocity.y * drag });
     }
-    const intake = stats(this.progress);
+    const intake = s;
+    const forward = { x: Math.sin(b.angle), y: -Math.cos(b.angle) };
+    const magnet = {
+      x: this.position.x + forward.x * 2.85 * UNIT * s.scale,
+      y: this.position.y + forward.y * 2.85 * UNIT * s.scale,
+    };
+    for (let i = 0; i < GATES.length; i++) {
+      if (this.progress.sector > i + 1 && this.gateOpening[i] < 1) {
+        this.gateOpening[i] = Math.min(1, this.gateOpening[i] + 1 / 90);
+        if (this.gateOpening[i] === 1) this.rebuildGates();
+      }
+    }
     for (const gem of this.gems.values()) {
       const p = gem.body.position;
       // Wake an approaching heap before contact: a slow blade otherwise treats sleeping
@@ -293,20 +353,48 @@ export class Simulation {
       ) {
         Sleeping.set(gem.body, false);
       }
+      if (s.magnetRange) {
+        const dx = magnet.x - p.x,
+          dy = magnet.y - p.y;
+        const distance = Math.hypot(dx, dy);
+        const ahead =
+          (p.x - this.position.x) * forward.x +
+          (p.y - this.position.y) * forward.y;
+        const sameSector = !GATES.some(
+          (y, i) =>
+            this.gateOpening[i] < 1 && (p.y - y) * (this.position.y - y) < 0,
+        );
+        if (
+          s.magnetRange &&
+          distance < s.magnetRange &&
+          distance > 4 &&
+          ahead > 2.3 * UNIT * s.scale &&
+          sameSector &&
+          gem.radius <= 3.35 + this.progress.levels.magnet * 0.08
+        ) {
+          Sleeping.set(gem.body, false);
+          const pull =
+            s.magnetStrength * (1 - (distance / s.magnetRange) * 0.65);
+          Body.setVelocity(gem.body, {
+            x: gem.body.velocity.x + (dx / distance) * pull,
+            y: gem.body.velocity.y + (dy / distance) * pull,
+          });
+        }
+      }
       if (
         Math.abs(p.x) < intake.intakeWidth / 2 &&
         Math.abs(p.y - COLLECTOR.y) < intake.intakeDepth / 2
       ) {
         Body.setVelocity(gem.body, {
-          x: -p.x * 0.055,
+          x: Math.sign(-p.x) * Math.min(2.4, Math.abs(p.x) * 0.055),
           y: (COLLECTOR.y - p.y) * 0.075,
         });
         Sleeping.set(gem.body, false);
       }
       if (
-        this.progress.levels.intake >= 4 &&
+        intake.feederLength > 0 &&
         Math.abs(p.x) < 27 &&
-        p.y > COLLECTOR.y - 140 &&
+        p.y > COLLECTOR.y - intake.feederLength &&
         p.y < COLLECTOR.y
       ) {
         Body.setVelocity(gem.body, { x: -p.x * 0.04, y: 1.6 });
@@ -314,6 +402,7 @@ export class Simulation {
       }
     }
     Engine.update(this.engine, 1000 / 60);
+    this.fundPlatform();
     const heading = (previous.angle + b.angle) / 2;
     const travel =
       ((this.position.x - previous.x) * Math.sin(heading) -
@@ -357,6 +446,37 @@ export class Simulation {
       this.events.push({ type: "victory" });
     }
   }
+  private fundPlatform() {
+    const pad = PADS.find(
+      (p) =>
+        Math.abs(this.position.x - p.x) < 47 &&
+        Math.abs(this.position.y - p.y) < 47,
+    );
+    if ((pad?.id ?? null) !== this.activePad) {
+      this.activePad = pad?.id ?? null;
+      this.padTicks = 0;
+      this.padCompleted = false;
+    }
+    if (!pad || this.padCompleted || ++this.padTicks < 20) return;
+    const cost = padCost(this.progress, pad.id);
+    if (cost === null) return;
+    const paid = this.progress.funding[pad.id];
+    if (this.padTicks % 15 === 0 && paid < cost) {
+      const amount = Math.min(
+        this.progress.money,
+        cost - paid,
+        Math.max(5, Math.ceil(cost / 16)),
+      );
+      this.progress.money -= amount;
+      this.progress.funding[pad.id] += amount;
+    }
+    if (this.progress.funding[pad.id] >= cost) {
+      this.progress.money += this.progress.funding[pad.id];
+      this.progress.funding[pad.id] = 0;
+      this.purchase(pad.id.startsWith("gate") ? "gate" : (pad.id as Upgrade));
+      this.padCompleted = true;
+    }
+  }
   purchase(kind: Upgrade | "gate"): boolean {
     const cost =
       kind === "gate"
@@ -376,7 +496,10 @@ export class Simulation {
   }
   snapshot(): SaveData {
     return {
-      version: 2,
+      version: 3,
+      completedPad: this.padCompleted
+        ? (this.activePad ?? undefined)
+        : undefined,
       progress: structuredClone(this.progress),
       machine: { ...this.position, angle: this.dozer.angle },
       gems: [...this.gems.values()].map((g) => ({

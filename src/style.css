@@ -7,6 +7,52 @@
   --yellow: #f2bd55;
   --muted: #777869;
 }
+
+/* Readable HUD sizing; canvas resolution and camera remain independent. */
+.pad-guide {
+  position: absolute;
+  right: 38px;
+  bottom: 33px;
+  width: 320px;
+  padding: 20px 22px;
+  border-radius: 6px;
+  background: #f5eddaef;
+  box-shadow: 0 8px 35px #3a2d2920;
+  border-bottom: 4px solid #6ccbb4;
+  pointer-events: none;
+}
+.pad-guide > strong {
+  display: block;
+  font:
+    600 32px "Barlow Condensed",
+    sans-serif;
+  margin-top: 8px;
+}
+.pad-guide p {
+  font-size: 14px;
+  line-height: 1.5;
+  margin: 8px 0 15px;
+}
+.pad-payment {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 10px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.pad-guide.funding {
+  border-color: #f2bd55;
+  background: #fff2d5;
+}
+#pad-fill {
+  background: #39987d;
+  height: 100%;
+  display: block;
+  transition: width 0.15s linear;
+}
+#app:not(.playing) .pad-guide {
+  display: none;
+}
 * {
   box-sizing: border-box;
 }
@@ -309,55 +355,6 @@ kbd {
   line-height: 1;
   background: #3445352b;
 }
-.workshop-button {
-  position: absolute;
-  bottom: 34px;
-  right: 38px;
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  border: 1px solid #597158;
-  background: #2c493a;
-  color: var(--cream);
-  padding: 17px 20px;
-  text-align: left;
-  box-shadow: 0 7px 28px #34352925;
-  border-radius: 3px;
-}
-.workshop-icon {
-  font-size: 28px;
-  color: var(--yellow);
-}
-.workshop-button small {
-  display: block;
-  font-size: 7px;
-  letter-spacing: 1.3px;
-  color: #c8c7a7;
-  margin-bottom: 4px;
-}
-.workshop-button strong {
-  font-family: "Barlow Condensed", Impact, sans-serif;
-  font-size: 25px;
-  font-weight: 500;
-  letter-spacing: 0.5px;
-}
-.workshop-button strong span {
-  margin-left: 35px;
-  color: var(--yellow);
-}
-.workshop-button kbd {
-  margin-left: 3px;
-  border-color: #8a9b7e;
-}
-.workshop-button:hover {
-  background: #3a5c46;
-}
-.workshop-button.affordable {
-  border-color: #e6bb60;
-  box-shadow:
-    0 0 0 2px #d9b75630,
-    0 8px 25px #34352925;
-}
 .welcome {
   position: absolute;
   top: 32%;
@@ -420,7 +417,6 @@ kbd {
 }
 #app:not(.playing) .contract,
 #app:not(.playing) .bottom-center,
-#app:not(.playing) .workshop-button,
 #app:not(.playing) #touch-controls {
   visibility: hidden;
 }
@@ -525,103 +521,6 @@ dialog h2 {
   color: #7a806e;
   margin: 0 0 22px;
 }
-.shop-balance {
-  display: block;
-  color: #3d604a;
-  margin-top: 7px;
-}
-.upgrade-list {
-  display: grid;
-  gap: 10px;
-}
-.upgrade {
-  display: flex;
-  gap: 13px;
-  align-items: center;
-  text-align: left;
-  width: 100%;
-  padding: 17px 13px;
-  border: 1px solid #c5d0bb;
-  border-radius: 3px;
-  background: #f9f4e9;
-}
-.upgrade:disabled {
-  border-color: #e0e0d0;
-  background: #eeeee2;
-}
-.upgrade:not(:disabled):hover {
-  border-color: #738969;
-  background: #fff9e9;
-}
-.upgrade-icon {
-  font-size: 30px;
-  width: 32px;
-  text-align: center;
-  color: #778d67;
-}
-.upgrade-info {
-  flex: 1;
-}
-.upgrade-name {
-  display: block;
-  font-weight: 700;
-  font-size: 12px;
-  margin-bottom: 7px;
-}
-.upgrade-name small {
-  font-size: 8px;
-  color: #839275;
-  margin-left: 9px;
-  white-space: nowrap;
-}
-.upgrade-info > span:not(.upgrade-name) {
-  font-size: 10px;
-  line-height: 1.6;
-  display: block;
-  color: #7c8371;
-}
-.metric {
-  font-size: 9px;
-  color: #6e8662;
-  display: block;
-  margin-top: 5px;
-}
-.upgrade > strong {
-  font-size: 15px;
-  text-align: right;
-  min-width: 62px;
-}
-.upgrade > strong small {
-  display: block;
-  font-size: 7px;
-  letter-spacing: 0.6px;
-  margin-top: 7px;
-  color: #739163;
-}
-.upgrade:disabled > strong {
-  color: #969c88;
-}
-.gate-card {
-  background: #e2e7d6;
-  padding: 21px;
-  border: 1px solid #ced7bf;
-  margin-top: 20px;
-  border-radius: 3px;
-}
-.gate-card h3 {
-  font-family: "Barlow Condensed", Impact, sans-serif;
-  font-size: 27px;
-  font-weight: 600;
-  margin: 9px 0;
-}
-.gate-card p {
-  font-size: 11px;
-  line-height: 1.7;
-  color: #77846c;
-}
-.gate-card .primary {
-  margin-top: 15px;
-}
 .panel-note {
   display: block;
   font-size: 9px;
@@ -688,10 +587,6 @@ dialog h2 {
     left: 48px;
     bottom: 42px;
   }
-  .workshop-button {
-    right: 48px;
-    bottom: 42px;
-  }
   .tools {
     right: 48px;
     top: 175px;
@@ -715,10 +610,6 @@ dialog h2 {
   .contract {
     width: 235px;
     left: 24px;
-    bottom: 24px;
-  }
-  .workshop-button {
-    right: 24px;
     bottom: 24px;
   }
   .topbar {
@@ -824,27 +715,6 @@ dialog h2 {
   .contract-footer strong {
     font-size: 10px;
   }
-  .workshop-button {
-    bottom: 26px;
-    right: 20px;
-    padding: 12px 14px;
-    gap: 8px;
-  }
-  .workshop-button small {
-    font-size: 6px;
-  }
-  .workshop-button strong {
-    font-size: 21px;
-  }
-  .workshop-button strong span {
-    margin-left: 12px;
-  }
-  .workshop-button kbd {
-    display: none;
-  }
-  .workshop-icon {
-    font-size: 22px;
-  }
   .bottom-center {
     bottom: 170px;
     left: 20px;
@@ -923,28 +793,6 @@ dialog h2 {
   dialog h2 {
     font-size: 36px;
   }
-  .upgrade {
-    gap: 8px;
-    padding: 14px 9px;
-  }
-  .upgrade-icon {
-    font-size: 25px;
-    width: 24px;
-  }
-  .upgrade-name {
-    font-size: 11px;
-  }
-  .upgrade-name small {
-    display: block;
-    margin: 4px 0 0;
-  }
-  .upgrade > strong {
-    font-size: 13px;
-    min-width: 52px;
-  }
-  .gate-card {
-    padding: 17px;
-  }
   #toast {
     top: 165px;
     font-size: 10px;
@@ -1008,5 +856,341 @@ dialog h2 {
   }
   .bottom-center {
     bottom: 172px;
+  }
+}
+/* Desktop and touch share the same readable type hierarchy. */
+.eyebrow,
+.contract .eyebrow,
+.contract-footer span {
+  font-size: 11px;
+  letter-spacing: 1px;
+}
+.account {
+  min-width: 230px;
+}
+.account > span,
+.account small,
+.brand strong span,
+.location small {
+  font-size: 11px;
+}
+.account strong {
+  font-size: 48px;
+}
+.location,
+.sector-tag,
+#gem-value {
+  font-size: 13px;
+}
+#gem-value {
+  opacity: 0.85;
+}
+.tools {
+  top: 184px;
+}
+.tools button {
+  width: 46px;
+  height: 46px;
+  font-size: 23px;
+}
+.contract {
+  width: 320px;
+}
+.contract h2 {
+  font-size: 33px;
+}
+.contract p,
+.progress-line,
+.contract-footer strong {
+  font-size: 14px;
+}
+.direction-tip {
+  font-size: 14px;
+  max-width: 390px;
+  text-align: center;
+  line-height: 1.5;
+}
+.key-guide {
+  font-size: 12px;
+}
+kbd {
+  font-size: 12px;
+  min-height: 24px;
+}
+.bottom-center {
+  bottom: 40px;
+}
+.panel-copy,
+.instructions p,
+.welcome p {
+  font-size: 16px;
+  line-height: 1.65;
+}
+.panel-note,
+.shortcut-list,
+.welcome > small {
+  font-size: 12px;
+}
+#toast {
+  font-size: 15px;
+  max-width: min(560px, 90vw);
+}
+@media (min-width: 1900px) {
+  .topbar,
+  .tools,
+  .sector-tag,
+  .contract,
+  .pad-guide,
+  .bottom-center,
+  .welcome,
+  dialog,
+  #toast {
+    zoom: 1.25;
+  }
+}
+@media (min-width: 3000px) {
+  .topbar,
+  .tools,
+  .sector-tag,
+  .contract,
+  .pad-guide,
+  .bottom-center,
+  .welcome,
+  dialog,
+  #toast {
+    zoom: 1.6;
+  }
+}
+@media (max-width: 1100px) and (min-width: 701px) {
+  .contract,
+  .pad-guide {
+    width: 280px;
+  }
+  .bottom-center {
+    bottom: 290px;
+  }
+  .location {
+    display: none;
+  }
+}
+@media (max-width: 700px) {
+  .topbar {
+    padding: max(16px, env(safe-area-inset-top)) 16px 0;
+    gap: 10px;
+  }
+  .brand strong {
+    font-size: 36px;
+  }
+  .brand strong span {
+    font-size: 8px;
+    letter-spacing: 1.3px;
+  }
+  .brand-mark {
+    font-size: 38px;
+  }
+  .account {
+    min-width: 148px;
+    padding: 10px 12px;
+  }
+  .account strong {
+    font-size: 36px;
+  }
+  .account > span,
+  .account small {
+    font-size: 10px;
+    letter-spacing: 0.5px;
+  }
+  .tools {
+    top: 128px;
+    right: 16px;
+    gap: 5px;
+  }
+  .tools button {
+    width: 44px;
+    height: 44px;
+    font-size: 22px;
+  }
+  .sector-tag {
+    top: 119px;
+    left: 18px;
+    font-size: 11px;
+    gap: 5px;
+  }
+  #gem-value {
+    display: none;
+  }
+  .contract {
+    top: 152px;
+    left: 16px;
+    width: 150px;
+    padding: 10px;
+  }
+  .contract .eyebrow {
+    display: none;
+  }
+  .progress-line {
+    font-size: 11px;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .pad-guide {
+    bottom: calc(22px + env(safe-area-inset-bottom));
+    right: 16px;
+    width: calc(100% - 202px);
+    min-width: 135px;
+    padding: 12px;
+  }
+  .pad-guide > strong {
+    font-size: 25px;
+  }
+  .pad-guide .eyebrow {
+    font-size: 10px;
+    letter-spacing: 0.3px;
+  }
+  .pad-guide p {
+    font-size: 12px;
+    margin: 6px 0 10px;
+    line-height: 1.4;
+  }
+  .pad-payment {
+    flex-direction: column;
+    gap: 5px;
+    font-size: 11px;
+  }
+  #touch-controls {
+    left: 16px;
+    bottom: calc(22px + env(safe-area-inset-bottom));
+    grid-template-columns: repeat(3, 50px);
+    grid-template-rows: repeat(3, 48px);
+    gap: 5px;
+  }
+  .bottom-center {
+    left: 16px;
+    bottom: 218px;
+    width: calc(100% - 32px);
+  }
+  .direction-tip {
+    font-size: 12px;
+    padding: 7px 10px;
+  }
+  .welcome {
+    bottom: 24px;
+    padding: 24px;
+  }
+  .welcome .eyebrow,
+  .welcome > small {
+    font-size: 10px;
+  }
+  .welcome p,
+  .panel-copy,
+  .instructions p {
+    font-size: 14px;
+  }
+  #toast {
+    top: 225px;
+    font-size: 13px;
+  }
+}
+@media (max-height: 600px) {
+  .contract,
+  .sector-tag,
+  .bottom-center {
+    display: none;
+  }
+  .pad-guide {
+    bottom: 16px;
+    padding: 12px;
+  }
+  .pad-guide p {
+    margin: 4px 0 8px;
+  }
+  .topbar {
+    padding: 12px 20px;
+  }
+  .tools {
+    top: 120px;
+    right: 20px;
+  }
+}
+@media (pointer: coarse) and (min-width: 701px) {
+  #touch-controls {
+    display: grid;
+    position: absolute;
+    left: 20px;
+    bottom: 20px;
+    grid-template-columns: repeat(3, 50px);
+    grid-template-rows: repeat(3, 48px);
+    gap: 5px;
+  }
+  #touch-controls button {
+    background: #f5eddaee;
+    border: 1px solid #e6e2c4;
+    border-radius: 5px;
+    touch-action: none;
+    font-size: 22px;
+  }
+  #touch-controls [data-dir="up"] {
+    grid-area: 1/2;
+  }
+  #touch-controls [data-dir="left"] {
+    grid-area: 2/1;
+  }
+  #touch-controls [data-dir="right"] {
+    grid-area: 2/3;
+  }
+  #touch-controls [data-dir="brake"] {
+    grid-area: 2/2;
+  }
+  #touch-controls [data-dir="down"] {
+    grid-area: 3/2;
+  }
+  .contract,
+  .bottom-center {
+    display: none;
+  }
+}
+
+.close {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+}
+.text-button {
+  font-size: 14px;
+  min-height: 44px;
+}
+@media (max-height: 600px) {
+  .account {
+    min-width: 180px;
+    padding: 8px 14px;
+  }
+  .account strong {
+    font-size: 36px;
+  }
+  .tools {
+    top: 118px;
+  }
+  .pad-guide {
+    width: 230px;
+    right: max(20px, env(safe-area-inset-right));
+  }
+  .pad-guide p {
+    font-size: 12px;
+  }
+  .pad-guide > strong {
+    font-size: 26px;
+  }
+  .pad-guide .eyebrow {
+    font-size: 10px;
+  }
+  .pad-guide .pad-payment {
+    font-size: 11px;
+  }
+  .welcome {
+    top: auto;
+    bottom: 20px;
+    left: 20px;
+    max-height: calc(100dvh - 40px);
+    overflow: auto;
   }
 }

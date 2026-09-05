@@ -160,7 +160,7 @@ test("old saves migrate money, equipment and clearance fractions without awardin
     }),
   );
   assert.ok(save);
-  assert.equal(save.version, 2);
+  assert.equal(save.version, 3);
   assert.equal(save.progress.money, 6);
   assert.equal(save.progress.earned, 96);
   assert.equal(save.progress.levels.engine, 2);

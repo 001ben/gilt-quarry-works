@@ -29,6 +29,7 @@ test("the locked sector physically blocks the dozer; purchase opens it", () => {
   sim.progress.money = 350;
   sim.progress.earned = 350;
   assert.equal(sim.purchase("gate"), true);
+  for (let i = 0; i < 90; i++) sim.update({ ...idle, brake: true });
   for (let i = 0; i < 120; i++)
     sim.update({ throttle: 1, steer: 0, brake: false });
   assert.ok(sim.position.y < -480);

@@ -32,6 +32,10 @@ const result = await page.evaluate(async () => {
   const matrices = () =>
     view.tracks.map((t) => Array.from(t.mesh.instanceMatrix.array));
   const initial = matrices();
+  const beltStart = view.belts.map((s) => s.position.toArray());
+  const holoStart = view.platforms.group.children[0].children.find(
+    (c) => c.type === "Group",
+  ).rotation.y;
   const frameTimes = [];
   let last = performance.now();
   // A real render frame with the full quarry present; drive through the starter heap.
@@ -51,8 +55,21 @@ const result = await page.evaluate(async () => {
   const stopped = matrices();
   for (let i = 0; i < 10; i++) view.render(0, i);
   const paused = matrices();
+  const beltBefore = view.belts.map((s) => s.position.toArray());
+  const holoBefore = view.platforms.group.children[0].children.find(
+    (c) => c.type === "Group",
+  ).rotation.y;
+  view.render(0, 9999);
+  const beltAfter = view.belts.map((s) => s.position.toArray());
   const times = frameTimes.slice(15).sort((a, b) => a - b);
   const output = {
+    beltAnimated: JSON.stringify(beltStart) !== JSON.stringify(beltBefore),
+    beltPaused: JSON.stringify(beltBefore) === JSON.stringify(beltAfter),
+    hologramAnimated: holoStart !== holoBefore,
+    hologramPaused:
+      holoBefore ===
+      view.platforms.group.children[0].children.find((c) => c.type === "Group")
+        .rotation.y,
     gemCount: sim.gems.size,
     collected: sim.progress.collected[0],
     medianFrameMs: times[Math.floor(times.length * 0.5)],
@@ -65,6 +82,7 @@ const result = await page.evaluate(async () => {
     pausedStable: JSON.stringify(stopped) === JSON.stringify(paused),
   };
   // Show the same runtime-exported model close up, including the closed plow and real track links.
+  sim.progress.levels.magnet = 5;
   sim.teleport(0, 0, Math.PI);
   view.render(0, 0);
   view.camera.left = -5.2;
@@ -79,6 +97,33 @@ const result = await page.evaluate(async () => {
 });
 await page.screenshot({ path: ".local/runtime-dozer.png" });
 assert.equal(result.animated, true);
+assert.equal(result.beltAnimated, true);
+assert.equal(result.beltPaused, true);
+assert.equal(result.hologramAnimated, true);
+assert.equal(result.hologramPaused, true);
+const gate = await page.evaluate(() => {
+  const { sim, view } = window.inspection;
+  sim.progress.money = sim.progress.earned = 350;
+  sim.teleport(0, -345, 0);
+  for (let i = 0; i < 300; i++)
+    sim.update({ throttle: 0, steer: 0, brake: true });
+  view.render(1 / 60, 0);
+  const halfway = view.gates[0].position.y;
+  const key = view.platforms.group.children[4].children.find(
+    (c) => c.type === "Group",
+  );
+  let color;
+  key.traverse((o) => {
+    if (o.isMesh) color = o.material.color.getHex();
+  });
+  for (let i = 0; i < 120; i++)
+    sim.update({ throttle: 0, steer: 0, brake: true });
+  view.render(1 / 60, 0);
+  return { halfway, hidden: !view.gates[0].visible, color };
+});
+assert.ok(gate.halfway < 0 && gate.halfway > -2.6);
+assert.equal(gate.hidden, true);
+assert.equal(gate.color, 0x66eda9);
 assert.equal(result.pausedStable, true);
 assert.deepEqual(result.trackInstances, [40, 40]);
 assert.ok(result.collected >= 60);
