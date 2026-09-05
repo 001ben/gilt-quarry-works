@@ -73,6 +73,7 @@ export class UpgradePlatforms {
           if (o instanceof THREE.Mesh) {
             o.geometry.dispose();
             (o.material as THREE.Material).dispose();
+            if (o instanceof THREE.InstancedMesh) o.dispose();
           }
         });
         preview.clear();

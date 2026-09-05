@@ -5,7 +5,7 @@ import { UpgradePlatforms } from "./platforms";
 import { bakeModelPart } from "./model";
 import { sampleTrack, TRACK_LENGTH, TRACK_LINK_COUNT } from "./tracks";
 import { COLLECTOR, Simulation, UNIT } from "./simulation";
-import { GATES, SECTORS, stats } from "./progression";
+import { GATES, SECTORS, stats, TOTAL_GEMS } from "./progression";
 
 const C = {
   sand: 0xcda37b,
@@ -28,7 +28,16 @@ export class QuarryView {
   gemBatches: THREE.InstancedMesh[] = [];
   tracks: { mesh: THREE.InstancedMesh; side: "left" | "right" }[] = [];
   dust: { mesh: THREE.Mesh; velocity: THREE.Vector3; life: number }[] = [];
-  belts: THREE.Mesh[] = [];
+  belts: THREE.InstancedMesh[] = [];
+  private renderedSim: Simulation | null = null;
+  private gemTransforms = new Float64Array(TOTAL_GEMS * 4);
+  private shownGems = new Set<number>();
+  private emptyGem = new THREE.Matrix4().makeScale(0, 0, 0);
+  private sectorOffsets = [
+    0,
+    SECTORS[0].count,
+    SECTORS[0].count + SECTORS[1].count,
+  ];
   platforms!: UpgradePlatforms;
   private elapsed = 0;
   private magnet = createMagnet();
@@ -343,6 +352,7 @@ export class QuarryView {
       if (o instanceof THREE.Mesh) {
         o.geometry.dispose();
         (o.material as THREE.Material).dispose();
+        if (o instanceof THREE.InstancedMesh) o.dispose();
       }
     });
     this.intake.clear();
@@ -464,6 +474,32 @@ export class QuarryView {
     }
     // Packing adds a little jostling without lifting loose gems away from the ground.
     // Collision remains planar rather than vertical rigid-body stacking.
+    // Stable slots avoid shifting every later gem when one is collected.
+    // Only changed poses or pile heights need new matrices and GPU uploads.
+    if (this.renderedSim !== this.sim) {
+      this.renderedSim = this.sim;
+      this.gemTransforms.fill(NaN);
+      this.shownGems.clear();
+      for (const batch of this.gemBatches) {
+        for (let i = 0; i < batch.instanceMatrix.count; i++)
+          batch.setMatrixAt(i, this.emptyGem);
+        batch.instanceMatrix.clearUpdateRanges();
+        batch.instanceMatrix.addUpdateRange(0, batch.instanceMatrix.count * 16);
+        batch.instanceMatrix.needsUpdate = true;
+      }
+    }
+    for (const id of this.shownGems) {
+      if (this.sim.gems.has(id)) continue;
+      const sector =
+        id < this.sectorOffsets[1] ? 0 : id < this.sectorOffsets[2] ? 1 : 2;
+      const index = id - this.sectorOffsets[sector];
+      const batch = this.gemBatches[sector];
+      batch.setMatrixAt(index, this.emptyGem);
+      batch.instanceMatrix.addUpdateRange(index * 16, 16);
+      batch.instanceMatrix.needsUpdate = true;
+      this.shownGems.delete(id);
+      this.gemTransforms[id * 4] = NaN;
+    }
     this.density.fill(0);
     for (const gem of this.sim.gems.values()) {
       const cellX = Math.floor((gem.body.position.x + 480) / 24),
@@ -486,22 +522,34 @@ export class QuarryView {
         }
       const mound = Math.max(0, Math.min(r * 0.4, (density - 1) * 0.008));
       const layer = (id * 0.61803398875) % 1;
-      this.dummy.position.set(
-        gem.body.position.x / UNIT,
-        r * 0.85 + mound * layer,
-        gem.body.position.y / UNIT,
-      );
+      const height = r * 0.85 + mound * layer;
+      const position = gem.body.position;
+      const cached = id * 4;
+      const index = id - this.sectorOffsets[gem.sector];
+      counts[gem.sector] = Math.max(counts[gem.sector], index + 1);
+      if (
+        this.gemTransforms[cached] === position.x &&
+        this.gemTransforms[cached + 1] === position.y &&
+        this.gemTransforms[cached + 2] === gem.body.angle &&
+        this.gemTransforms[cached + 3] === height
+      )
+        continue;
+      this.shownGems.add(id);
+      this.gemTransforms[cached] = position.x;
+      this.gemTransforms[cached + 1] = position.y;
+      this.gemTransforms[cached + 2] = gem.body.angle;
+      this.gemTransforms[cached + 3] = height;
+      this.dummy.position.set(position.x / UNIT, height, position.y / UNIT);
       this.dummy.rotation.set(0.2 + id * 0.13, gem.body.angle, id * 0.19);
       this.dummy.scale.set(r * 1.15, r * (1.3 + (id % 3) * 0.15), r * 1.15);
       this.dummy.updateMatrix();
-      this.gemBatches[gem.sector].setMatrixAt(
-        counts[gem.sector]++,
-        this.dummy.matrix,
-      );
+      const batch = this.gemBatches[gem.sector];
+      batch.setMatrixAt(index, this.dummy.matrix);
+      batch.instanceMatrix.addUpdateRange(index * 16, 16);
+      batch.instanceMatrix.needsUpdate = true;
     }
     this.gemBatches.forEach((batch, i) => {
       batch.count = counts[i];
-      batch.instanceMatrix.needsUpdate = true;
     });
     if (this.sim.dozer.speed > 0.7 && Math.random() < dt * 15) {
       const mesh = new THREE.Mesh(this.dustGeometry, this.dustMaterial);

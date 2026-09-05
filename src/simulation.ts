@@ -1,4 +1,5 @@
 import Matter from "matter-js";
+import { CollisionRegion } from "./collision-region";
 import {
   freshProgress,
   emptyFunding,
@@ -181,6 +182,13 @@ export class Simulation {
   gateOpening = [0, 0];
   trackTravel = { left: 0, right: 0 };
   constructor(save: SaveData | null = null) {
+    const region = new CollisionRegion();
+    Matter.Events.on(this.engine, "beforeSolve", () => {
+      region.select(
+        Composite.allBodies(this.engine.world),
+        this.engine.detector.bodies,
+      );
+    });
     this.progress = save ? structuredClone(save.progress) : freshProgress();
     const wall = (x: number, y: number, w: number, h: number) =>
       Bodies.rectangle(x, y, w, h, {
@@ -349,6 +357,7 @@ export class Simulation {
       // stones as immovable until it exceeds Matter's collision-wake threshold.
       if (
         gem.body.isSleeping &&
+        (input.throttle || input.steer || b.speed > 0.05) &&
         (p.x - this.position.x) ** 2 + (p.y - this.position.y) ** 2 < 260 ** 2
       ) {
         Sleeping.set(gem.body, false);

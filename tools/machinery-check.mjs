@@ -32,7 +32,7 @@ const result = await page.evaluate(async () => {
   const matrices = () =>
     view.tracks.map((t) => Array.from(t.mesh.instanceMatrix.array));
   const initial = matrices();
-  const beltStart = view.belts.map((s) => s.position.toArray());
+  const beltStart = view.belts.map((s) => Array.from(s.instanceMatrix.array));
   const holoStart = view.platforms.group.children[0].children.find(
     (c) => c.type === "Group",
   ).rotation.y;
@@ -55,12 +55,12 @@ const result = await page.evaluate(async () => {
   const stopped = matrices();
   for (let i = 0; i < 10; i++) view.render(0, i);
   const paused = matrices();
-  const beltBefore = view.belts.map((s) => s.position.toArray());
+  const beltBefore = view.belts.map((s) => Array.from(s.instanceMatrix.array));
   const holoBefore = view.platforms.group.children[0].children.find(
     (c) => c.type === "Group",
   ).rotation.y;
   view.render(0, 9999);
-  const beltAfter = view.belts.map((s) => s.position.toArray());
+  const beltAfter = view.belts.map((s) => Array.from(s.instanceMatrix.array));
   const times = frameTimes.slice(15).sort((a, b) => a - b);
   const output = {
     beltAnimated: JSON.stringify(beltStart) !== JSON.stringify(beltBefore),
@@ -127,6 +127,41 @@ assert.equal(gate.color, 0x66eda9);
 assert.equal(result.pausedStable, true);
 assert.deepEqual(result.trackInstances, [40, 40]);
 assert.ok(result.collected >= 60);
+const cache = await page.evaluate(() => {
+  const { sim, view } = window.inspection;
+  view.render(0, 0);
+  const before = view.gemBatches.map((b) => b.instanceMatrix.version);
+  view.render(0, 0);
+  const stable = before.every(
+    (v, i) => v === view.gemBatches[i].instanceMatrix.version,
+  );
+  const gem = sim.gems.values().next().value;
+  const batch = view.gemBatches[gem.sector];
+  const slot = gem.id - [0, 1800, 3900][gem.sector];
+  sim.collect(gem);
+  view.render(0, 0);
+  const matrix = view.camera.matrixWorld.clone();
+  batch.getMatrixAt(slot, matrix);
+  const hidden =
+    matrix.elements[0] === 0 &&
+    matrix.elements[5] === 0 &&
+    matrix.elements[10] === 0;
+  const snapshot = sim.snapshot();
+  view.sim = new sim.constructor(snapshot);
+  view.render(0, 0);
+  batch.getMatrixAt(slot, matrix);
+  return {
+    stable,
+    hidden,
+    restoredHidden:
+      matrix.elements[0] === 0 &&
+      matrix.elements[5] === 0 &&
+      matrix.elements[10] === 0,
+  };
+});
+assert.equal(cache.stable, true);
+assert.equal(cache.hidden, true);
+assert.equal(cache.restoredHidden, true);
 assert.deepEqual(errors, []);
 await writeFile(
   ".local/machinery-result.json",

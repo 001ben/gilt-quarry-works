@@ -63,9 +63,10 @@ npm run build
 # With the dev server running on port 5173 and Microsoft Edge installed:
 node tools/browser-check.mjs
 node tools/machinery-check.mjs
+node tools/performance-check.mjs current
 ```
 
-See [design and source study](docs/design.md) and [verification results](docs/verification.md). The original repository lives only in an ignored local `.reference` folder during development; none of its code or assets are shipped here.
+See [conveyor performance measurements](docs/performance.md), [design and source study](docs/design.md) and [verification results](docs/verification.md). The original repository lives only in an ignored local `.reference` folder during development; none of its code or assets are shipped here.
 
 ## Project map
 

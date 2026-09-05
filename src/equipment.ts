@@ -35,7 +35,7 @@ export function createMagnet() {
 }
 export function createConveyor(width: number, depth: number, feeder: number) {
   const group = new THREE.Group();
-  const slats: THREE.Mesh[] = [];
+  const slats: THREE.InstancedMesh[] = [];
   const section = (
     length: number,
     breadth: number,
@@ -66,26 +66,24 @@ export function createConveyor(width: number, depth: number, feeder: number) {
       0x273b35,
     );
     const count = Math.ceil(length / 0.36);
-    for (let i = 0; i < count; i++) {
-      const slat = block(
-        part,
-        0,
-        0.115,
-        0,
+    const slat = new THREE.InstancedMesh(
+      new THREE.BoxGeometry(
         axis === "x" ? 0.065 : breadth - 0.12,
         0.025,
         axis === "x" ? breadth - 0.12 : 0.065,
-        i % 4 === 0 ? 0xe3c274 : 0x84988b,
-      );
-      slat.castShadow = false;
-      slat.userData = {
-        axis,
-        length,
-        direction: axis === "x" ? -side : 1,
-        offset: (i * length) / count,
-      };
-      slats.push(slat);
+      ),
+      paint(0xffffff),
+      count,
+    );
+    slat.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    slat.receiveShadow = true;
+    slat.frustumCulled = false;
+    for (let i = 0; i < count; i++) {
+      slat.setColorAt(i, new THREE.Color(i % 4 === 0 ? 0xe3c274 : 0x84988b));
     }
+    slat.userData = { axis, length, direction: axis === "x" ? -side : 1 };
+    part.add(slat);
+    slats.push(slat);
     group.add(part);
   };
   for (const side of [-1, 1]) section(width / 2, depth, "x", side);
@@ -97,12 +95,23 @@ export function createConveyor(width: number, depth: number, feeder: number) {
   animateConveyor(slats, 0);
   return { group, slats };
 }
-export function animateConveyor(slats: THREE.Mesh[], time: number) {
+const slatMatrix = new THREE.Matrix4();
+export function animateConveyor(slats: THREE.InstancedMesh[], time: number) {
   for (const slat of slats) {
-    const { axis, length, direction, offset } = slat.userData;
-    slat.position[axis as "x" | "z"] =
-      ((((offset + time * 1.5 * direction) % length) + length) % length) -
-      length / 2;
+    const { axis, length, direction } = slat.userData;
+    for (let i = 0; i < slat.count; i++) {
+      const offset = (i * length) / slat.count;
+      const position =
+        ((((offset + time * 1.5 * direction) % length) + length) % length) -
+        length / 2;
+      slatMatrix.makeTranslation(
+        axis === "x" ? position : 0,
+        0.115,
+        axis === "z" ? position : 0,
+      );
+      slat.setMatrixAt(i, slatMatrix);
+    }
+    slat.instanceMatrix.needsUpdate = true;
   }
 }
 export function createKey() {
