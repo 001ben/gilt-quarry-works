@@ -1,4 +1,7 @@
 import Matter from "matter-js";
+import { activityAt, type Activity } from "./activities";
+import { validAssay } from "./assay";
+import { generateOvertimeLayout, overtimeContract } from "./overtime";
 import { CollisionRegion } from "./collision-region";
 import {
   freshProgress,
@@ -31,9 +34,11 @@ export type GameEvent =
   | { type: "notice"; text: string }
   | { type: "upgrade"; kind: string }
   | { type: "fund"; pad: PadId; value: number; ratio: number }
+  | { type: "activity"; activity: Activity }
+  | { type: "overtime-complete"; bonus: number }
   | { type: "victory" };
 export interface SaveData {
-  version: 4;
+  version: 5;
   completedPad?: PadId;
   progress: Progress;
   machine: { x: number; y: number; angle: number };
@@ -47,7 +52,7 @@ export function parseSave(raw: string | null): SaveData | null {
       },
       p = s.progress;
     if (
-      ![1, 2, 3, 4].includes(s.version) ||
+      ![1, 2, 3, 4, 5].includes(s.version) ||
       !p ||
       !p.levels ||
       !s.machine ||
@@ -83,6 +88,25 @@ export function parseSave(raw: string | null): SaveData | null {
       p.levels.refinery = 0;
       p.funding.refinery = 0;
     }
+    if (s.version < 5) {
+      p.lastAssay = null;
+      p.overtime = { completed: 0, active: false, collected: 0 };
+    }
+    const overtime = p.overtime;
+    if (
+      !validAssay(p.lastAssay) ||
+      !overtime ||
+      !Number.isSafeInteger(overtime.completed) ||
+      overtime.completed < 0 ||
+      overtime.completed >= Number.MAX_SAFE_INTEGER ||
+      typeof overtime.active !== "boolean" ||
+      !Number.isInteger(overtime.collected) ||
+      overtime.collected < 0 ||
+      (!overtime.active && overtime.collected !== 0) ||
+      ((overtime.active || overtime.completed > 0) &&
+        (!p.victory || p.sector !== 3))
+    )
+      return null;
     if (
       !Number.isInteger(p.levels.magnet) ||
       p.levels.magnet < 0 ||
@@ -145,9 +169,22 @@ export function parseSave(raw: string | null): SaveData | null {
       ids.add(g.id);
       remaining[g.id < counts[0] ? 0 : g.id < counts[0] + counts[1] ? 1 : 2]++;
     }
-    if (!remaining.every((n, i) => n + p.collected[i] === counts[i]))
-      return null;
-    if (p.victory !== (s.gems.length === 0)) return null;
+    if (overtime.active) {
+      const layout = generateOvertimeLayout(overtime.completed);
+      const allowed = new Set(layout.map((g) => g.id));
+      if (
+        !p.collected.every((n, i) => n === counts[i]) ||
+        !p.bonuses.every(Boolean) ||
+        s.gems.length === 0 ||
+        overtime.collected + s.gems.length !== layout.length ||
+        !s.gems.every((g) => allowed.has(g.id))
+      )
+        return null;
+    } else {
+      if (!remaining.every((n, i) => n + p.collected[i] === counts[i]))
+        return null;
+      if (p.victory !== (s.gems.length === 0)) return null;
+    }
     if (s.version === 1) {
       // Keep funds, equipment and clearance fractions when moving to the denser layout.
       const progress = structuredClone(p);
@@ -159,13 +196,13 @@ export function parseSave(raw: string | null): SaveData | null {
         (g) => skipped[g.sector]++ >= progress.collected[g.sector],
       );
       return {
-        version: 4,
+        version: 5,
         progress,
         machine: s.machine,
         gems: gems.map(({ id, x, y, angle }) => ({ id, x, y, angle })),
       };
     }
-    return { ...s, version: 4 };
+    return { ...s, version: 5 };
   } catch {
     return null;
   }
@@ -187,6 +224,9 @@ export class Simulation {
   tick = 0;
   activePad: PadId | null = null;
   private padTicks = 0;
+  activeActivity: Activity | null = null;
+  private activityTicks = 0;
+  private activityOpened = false;
   padCompleted = false;
   gateOpening = [0, 0];
   trackTravel = { left: 0, right: 0 };
@@ -229,8 +269,15 @@ export class Simulation {
         this.padCompleted = true;
       }
     }
+    if (save) {
+      this.activeActivity = activityAt(this.position);
+      this.activityOpened = this.activeActivity !== null;
+    }
     const stored = save ? new Map(save.gems.map((g) => [g.id, g])) : null;
-    for (const seed of generateGemLayout()) {
+    const layout = this.progress.overtime.active
+      ? generateOvertimeLayout(this.progress.overtime.completed)
+      : generateGemLayout();
+    for (const seed of layout) {
       const { id, sector, radius, value } = seed;
       let { x, y } = seed;
       const persisted = stored?.get(id);
@@ -494,6 +541,7 @@ export class Simulation {
     }
     Engine.update(this.engine, 1000 / 60);
     this.fundPlatform();
+    this.visitActivity();
     const heading = (previous.angle + b.angle) / 2;
     const travel =
       ((this.position.x - previous.x) * Math.sin(heading) -
@@ -516,13 +564,28 @@ export class Simulation {
     const value = gem.value + stats(p).gemBonus;
     p.money += value;
     p.earned += value;
-    p.collected[gem.sector]++;
     this.events.push({
       type: "collect",
       ...gem.body.position,
       value,
       color: SECTORS[gem.sector].color,
     });
+    if (p.overtime.active) {
+      p.overtime.collected++;
+      if (this.gems.size === 0) {
+        const { bonus } = overtimeContract(p.overtime.completed);
+        p.overtime = {
+          completed: p.overtime.completed + 1,
+          active: false,
+          collected: 0,
+        };
+        p.money += bonus;
+        p.earned += bonus;
+        this.events.push({ type: "overtime-complete", bonus });
+      }
+      return;
+    }
+    p.collected[gem.sector]++;
     const sector = SECTORS[gem.sector];
     if (!p.bonuses[gem.sector] && p.collected[gem.sector] >= sector.count / 2) {
       p.bonuses[gem.sector] = true;
@@ -536,6 +599,37 @@ export class Simulation {
     if (this.gems.size === 0 && !p.victory) {
       p.victory = true;
       this.events.push({ type: "victory" });
+    }
+  }
+  startOvertime(): Simulation | null {
+    if (
+      !this.progress.victory ||
+      this.progress.overtime.active ||
+      this.gems.size
+    )
+      return null;
+    const save = this.snapshot();
+    save.progress.overtime.active = true;
+    save.progress.overtime.collected = 0;
+    // All deposits remain at the south end; all three cleared sectors stay accessible.
+    save.progress.sector = 3;
+    save.gems = generateOvertimeLayout(save.progress.overtime.completed).map(
+      ({ id, x, y, angle }) => ({ id, x, y, angle }),
+    );
+    return new Simulation(save);
+  }
+  private visitActivity() {
+    const activity = activityAt(this.position);
+    if (activity !== this.activeActivity) {
+      this.activeActivity = activity;
+      this.activityTicks = 0;
+      this.activityOpened = false;
+    }
+    if (!activity || this.activityOpened) return;
+    this.activityTicks = this.dozer.speed < 0.6 ? this.activityTicks + 1 : 0;
+    if (this.activityTicks >= 20) {
+      this.activityOpened = true;
+      this.events.push({ type: "activity", activity });
     }
   }
   private fundPlatform() {
@@ -594,7 +688,7 @@ export class Simulation {
   }
   snapshot(): SaveData {
     return {
-      version: 4,
+      version: 5,
       completedPad: this.padCompleted
         ? (this.activePad ?? undefined)
         : undefined,

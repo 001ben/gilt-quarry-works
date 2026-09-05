@@ -39,7 +39,7 @@ await page.keyboard.press("Escape");
 const before = JSON.parse(
   await page.evaluate(() => localStorage.getItem("gilt-quarry-v1")),
 );
-assert.equal(before.version, 4);
+assert.equal(before.version, 5);
 assert.equal(
   before.gems.length,
   6300 - before.progress.collected.reduce((a, b) => a + b, 0),

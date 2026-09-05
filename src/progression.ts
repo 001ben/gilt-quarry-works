@@ -26,6 +26,12 @@ export const emptyFunding = (): Record<PadId, number> => ({
   gate2: 0,
 });
 export interface Progress {
+  lastAssay: {
+    bet: number;
+    faces: [number, number, number];
+    payout: number;
+  } | null;
+  overtime: { completed: number; active: boolean; collected: number };
   money: number;
   earned: number;
   levels: Record<Upgrade, number>;
@@ -75,6 +81,8 @@ export const TOTAL_GEMS = SECTORS.reduce(
 export const GATES = [-420, -990];
 export function freshProgress(): Progress {
   return {
+    lastAssay: null,
+    overtime: { completed: 0, active: false, collected: 0 },
     money: 0,
     earned: 0,
     levels: { engine: 1, blade: 1, intake: 1, magnet: 0, refinery: 0 },

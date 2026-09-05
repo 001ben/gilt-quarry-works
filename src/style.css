@@ -1239,3 +1239,184 @@ kbd {
 #drag-stick.reversing span {
   background: #f18c76;
 }
+
+/* Quarry side activities: readable cards with finger-sized controls. */
+.activity-open {
+  position: absolute;
+  left: 50%;
+  bottom: 120px;
+  transform: translateX(-50%);
+  padding: 14px 22px;
+  background: #2e5141;
+  color: #ffe3a5;
+  border: 1px solid #ffdc8e;
+  border-radius: 6px;
+  font-weight: 700;
+  min-height: 48px;
+  z-index: 4;
+}
+.assay-machine {
+  background: #284b40;
+  padding: 18px 14px 8px;
+  border: 3px solid #d6af65;
+  border-radius: 12px;
+  box-shadow: inset 0 0 25px #132c25;
+}
+.assay-reels {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 9px;
+}
+.assay-reel {
+  background: #faf2df;
+  border-radius: 7px;
+  padding: 12px 2px;
+  text-align: center;
+  color: #248d81;
+  overflow: hidden;
+}
+.assay-reel strong {
+  display: block;
+  font-size: 48px;
+  line-height: 1.3;
+}
+.assay-reel span {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #385346;
+}
+.assay-reel[data-crystal="1"] strong {
+  color: #b87b12;
+}
+.assay-reel[data-crystal="2"] strong {
+  color: #8760b8;
+}
+.assay-reel[data-crystal="3"] strong {
+  color: #24834f;
+}
+.assay-reel.turning strong {
+  animation: assay-turn 180ms linear infinite;
+}
+@keyframes assay-turn {
+  50% {
+    transform: translateY(-9px) rotate(12deg);
+    opacity: 0.35;
+  }
+}
+.assay-lights {
+  color: #edc77a;
+  letter-spacing: 8px;
+  text-align: center;
+  font-size: 11px;
+  padding-top: 10px;
+}
+.assay-bank {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 17px 0 12px;
+  font-size: 13px;
+}
+.assay-bank strong {
+  font-size: 23px;
+}
+.assay-bets {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.assay-bets button {
+  border: 1px solid #9aaf99;
+  border-radius: 4px;
+  background: #e5e7d8;
+  color: #314d3c;
+  min-height: 46px;
+  font-size: 16px;
+  font-weight: 700;
+}
+.assay-bets button[aria-pressed="true"] {
+  background: #365b45;
+  color: #fff3cb;
+  border-color: #365b45;
+}
+.assay-game button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+#assay-result {
+  min-height: 44px;
+  margin: 15px 0;
+  font-size: 15px;
+  line-height: 1.5;
+  text-align: center;
+}
+.assay-win #assay-result {
+  color: #347642;
+  font-weight: 700;
+}
+.assay-odds {
+  border-top: 1px solid #c8cbb8;
+  padding-top: 14px;
+  font-size: 12px;
+}
+.assay-odds > b {
+  font-size: 11px;
+  letter-spacing: 1px;
+}
+.assay-odds p {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 10px 0;
+}
+.assay-game .panel-note {
+  font-size: 11px;
+}
+.overtime-ticket {
+  border: 1px dashed #8aa185;
+  background: #e3e8d8;
+  padding: 24px;
+  margin: 20px 0;
+  border-radius: 8px;
+}
+.overtime-ticket > span,
+.overtime-ticket small {
+  font-size: 12px;
+  letter-spacing: 1px;
+}
+.overtime-ticket h3 {
+  font: 600 32px "Barlow Condensed";
+  margin: 12px 0;
+}
+.overtime-ticket p {
+  font-size: 17px;
+}
+@media (max-width: 600px) {
+  .activity-open {
+    bottom: 175px;
+    max-width: 80vw;
+    font-size: 13px;
+  }
+  .assay-machine {
+    padding: 12px 8px 6px;
+  }
+  .assay-reel strong {
+    font-size: 38px;
+  }
+  .assay-reel span {
+    font-size: 10px;
+  }
+  .assay-odds {
+    font-size: 11px;
+  }
+  .assay-lights {
+    letter-spacing: 5px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .assay-reel.turning strong {
+    animation: none;
+  }
+}

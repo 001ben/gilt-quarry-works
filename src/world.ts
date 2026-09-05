@@ -6,6 +6,7 @@ import {
   createMagnet,
   createRefinery,
 } from "./equipment";
+import { ActivityPlatforms } from "./activity-platforms";
 import { UpgradePlatforms } from "./platforms";
 import { bakeModelPart } from "./model";
 import { sampleTrack, TRACK_LENGTH, TRACK_LINK_COUNT } from "./tracks";
@@ -44,6 +45,7 @@ export class QuarryView {
     SECTORS[0].count + SECTORS[1].count,
   ];
   platforms!: UpgradePlatforms;
+  activities!: ActivityPlatforms;
   private elapsed = 0;
   private magnet = createMagnet();
   private field = new THREE.Group();
@@ -164,6 +166,8 @@ export class QuarryView {
     }
     this.platforms = new UpgradePlatforms(this.machine);
     this.scene.add(this.platforms.group);
+    this.activities = new ActivityPlatforms();
+    this.scene.add(this.activities.group);
     this.model = this.machine;
     this.ready = true;
     this.statsKey = "";
@@ -468,6 +472,7 @@ export class QuarryView {
       if (drum.name === "PolishingDrum") drum.rotation.y = time * 2;
     });
     this.platforms?.render(this.sim, time);
+    this.activities?.render(this.sim, time);
     this.magnet.visible = this.sim.progress.levels.magnet > 0;
     this.field.visible = this.magnet.visible;
     this.field.children.forEach((arc, i) => {

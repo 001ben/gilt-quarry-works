@@ -6,7 +6,7 @@ Environment: Windows, Node 24.18, Blender 5.0.1, headless Microsoft Edge, 1440×
 
 - Blender successfully generated the editable dozer, runtime GLB and rendered review image. The rendered game loads that GLB, preserving named upgrade groups and combining static meshes by material.
 - TypeScript type check and Vite production build pass.
-- Thirty-one tests cover the actual Matter.js simulation, vehicle-relative reverse and pivot turns, signed track travel, continuous chain sampling, exported blade triangle preservation and face raycasts, dense gem counts/bounds, migration from versions 1–3, platform escrow/reload/completion, free-key refunds, delayed gate collision removal, full conveyor reach, and magnet strength/direction/gate boundaries.
+- Thirty-seven tests cover the actual Matter.js simulation, vehicle-relative reverse and pivot turns, signed track travel, continuous chain sampling, exported blade triangle preservation and face raycasts, dense gem counts/bounds, migration from versions 1–4, platform escrow/reload/completion, free-key refunds, delayed gate collision removal, full conveyor reach, and magnet strength/direction/gate boundaries.
 - Browser keyboard driving with W delivered 132 starter gems for $132. A saved fixture approaching the engine pad was driven onto it with W, paid $90 in installments from a $240 wallet, and fitted engine level two. Further time parked did not spend more. Reload restored collection progress and funds. Exact delivery counts vary with browser input timing.
 - Browser runtime reported no uncaught page errors or console errors. Checking console errors now catches geometry-batching failures, which the original page-error-only check missed. Desktop, funding platform, portrait/landscape mobile and runtime magnet close-up screenshots were inspected.
 - Pointer-held mobile directional control moved the dozer. Portrait touch controls and toolbar targets measured at least 44 px; the landscape touch layout was also exercised with no horizontal overflow. Escape pause and resume were exercised, including a fix to prevent native dialog cancellation from immediately undoing the pause key.
@@ -40,3 +40,12 @@ Touch-emulated browser checks physically drive forward and reverse, verify headi
 - Saves are browser-local. A denied or full storage area is reported in the HUD; there is no cloud sync.
 
 Reproduce with the commands in the README. Browser evidence is written to ignored `.local/` files.
+
+
+## Lucky Assay, overtime and reset
+
+The unit suite enumerates all 64 crystal combinations to verify displayed odds and expected payouts. Tests cover rejected/insufficient stakes, net-win accounting, saved settled results, old-save migration, corrupt contract saves, one activity opening per visit, and reload while parked. Twelve complete overtime jobs verify sector rotation, the 900-body cap, exact bonus accounting, preserved upgrades and a free start with no coins. A real Matter collector test delivers overtime stones.
+
+Run node tools/activities-check.mjs to drive onto the gold pad, place a wager, close during the reveal, reopen/reload without a second charge, and check portrait layout. It accepts a free overtime job with an empty bank, resumes it, physically collects its final gem, and starts the next sector. Reset cancellation keeps progress; confirmation resets the game while preserving an unrelated storage key. GILT_TEST_URL can target the deployed build. Screenshots are written under .local/.
+
+The existing browser driving/save/victory check and touch-drag regression also pass. The late-game stress script, with 6,192 stones remaining and maximum magnet, measured p95 physics-plus-render-submission costs of 14.0 ms pushing, 10.0 ms turning and 7.2 ms braking on this Windows/Edge run; no escaped stones or browser errors. These are local CPU/submission measurements, not mobile-device FPS guarantees.

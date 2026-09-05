@@ -5,6 +5,9 @@ import "@fontsource/dm-sans/latin-400.css";
 import "@fontsource/dm-sans/latin-600.css";
 import "@fontsource/dm-sans/latin-700.css";
 import "./style.css";
+import { mountAssayPanel } from "./assay-panel";
+import { ACTIVITY_PADS } from "./activities";
+import { overtimeContract } from "./overtime";
 import { DragControls } from "./drag-controls";
 import { CoinEffects } from "./coin-effects";
 import { GameAudio } from "./audio";
@@ -48,7 +51,7 @@ app.innerHTML = `
   </nav>
   <div class="sector-tag"><span class="diamond">◆</span><span id="mineral">QUARTZ</span><span id="gem-value">$1 / GEM</span></div>
   <section class="contract" id="contract">
-    <div class="eyebrow"><span>YOUR FIRST CONTRACT</span><span id="contract-number">01—03</span></div>
+    <div class="eyebrow"><span id="contract-label">YOUR FIRST CONTRACT</span><span id="contract-number">01—03</span></div>
     <h2 id="contract-title">Make room for more.</h2>
     <p id="contract-copy">Push quartz onto the striped deposit belt.</p>
     <div class="progress-line"><span id="collected">0 / 1800 collected</span><span id="percent">0%</span></div>
@@ -57,6 +60,7 @@ app.innerHTML = `
   </section>
   <div class="bottom-center"><span class="direction-tip" id="tip">Drag toward the deposit, or hold W to push the first heap.</span><div class="key-guide"><kbd>W</kbd><kbd>S</kbd><span>forward / reverse</span><i></i><kbd>←</kbd><kbd>→</kbd><span>steer</span><i></i><kbd>SPACE</kbd><span>brake</span></div></div>
   <aside class="pad-guide" id="pad-guide"><div class="eyebrow" id="pad-status">DRIVE-ON UPGRADES</div><strong id="pad-name">Find a glowing platform</strong><p id="pad-detail">Park on a pad to fund your next part.</p><div class="progress-track"><span id="pad-fill"></span></div><div class="pad-payment"><span id="pad-paid"></span><span id="pad-distance"></span></div></aside>
+  <button id="activity-open" class="activity-open" hidden></button>
   <div id="touch-controls" aria-label="Touch driving controls"><button data-dir="up" aria-label="Drive forward">↑</button><button data-dir="left" aria-label="Steer left">←</button><button data-dir="down" aria-label="Reverse">↓</button><button data-dir="right" aria-label="Steer right">→</button><button data-dir="brake" aria-label="Brake">■</button></div>
   <div id="toast" role="status" aria-live="polite"></div>
   <div id="loading"><span class="loader"></span><strong>Opening the quarry</strong><span>Unloading your machine…</span></div>
@@ -69,7 +73,8 @@ const canvas = $<HTMLCanvasElement>("world");
 let view: QuarryView;
 let started = false,
   paused = true,
-  modal: "help" | "pause" | "victory" | "reset" | null = null;
+  modal: "help" | "pause" | "victory" | "reset" | "assay" | "contracts" | null =
+    null;
 let keys = new Set<string>(),
   touch = new Set<string>();
 let last = performance.now(),
@@ -79,6 +84,7 @@ let last = performance.now(),
   toastTimer = 0;
 let pendingPayout = { value: 0, x: 0, y: 0 },
   lastPayout = 0;
+let panelCleanup = () => {};
 const dialog = $<HTMLDialogElement>("panel");
 const drag = new DragControls(canvas, () => started && !paused);
 const coins = new CoinEffects(app, $("money"));
@@ -137,6 +143,38 @@ function updateHud() {
     ? "CONTRACT BONUS EARNED"
     : "HALFWAY BONUS";
   $("bonus-value").textContent = `+$${zone.bonus}`;
+  $("contract-label").textContent = p.victory
+    ? "THE NEXT SHIFT"
+    : "SECTOR CONTRACT";
+  if (p.victory) {
+    const job = overtimeContract(p.overtime.completed);
+    const active = p.overtime.active;
+    $("contract-number").textContent =
+      "OT / " + job.number.toString().padStart(2, "0");
+    $("contract-title").textContent = active
+      ? "Overtime " + job.number + "."
+      : "More ground. Same machine.";
+    $("contract-copy").textContent = active
+      ? SECTORS[job.sector].name +
+        ": deliver " +
+        job.count +
+        " richer gems to the south belt."
+      : "Visit the Overtime pad in Quartz Flats, or accept your next free job from Pause.";
+    $("collected").textContent = active
+      ? p.overtime.collected + " / " + job.count + " collected"
+      : p.overtime.completed + " overtime jobs completed";
+    const percent = active ? (p.overtime.collected / job.count) * 100 : 100;
+    $("percent").textContent = Math.round(percent) + "%";
+    $("progress-fill").style.width = percent + "%";
+    $("bonus").textContent = active ? "COMPLETION BONUS" : "NEXT JOB BONUS";
+    $("bonus-value").textContent = money(job.bonus);
+    if (active && sector === job.sector)
+      $("gem-value").textContent =
+        money(job.value + stats(p).gemBonus) + " / GEM";
+  }
+  const activity = ACTIVITY_PADS.find((pad) => pad.id === sim.activeActivity);
+  $("activity-open").hidden = !activity;
+  if (activity) $("activity-open").textContent = activity.name + " · OPEN →";
   const nearest = PADS.filter((pad) => padCost(p, pad.id) !== null).sort(
     (a, b) =>
       Math.hypot(a.x - sim.position.x, a.y - sim.position.y) -
@@ -205,8 +243,17 @@ function updateHud() {
         : p.collected[0] === 0
           ? "Drag toward the deposit, or hold W to push the first heap."
           : "Park on a glowing platform to build your next upgrade.";
+  if (activity)
+    $("tip").textContent =
+      "Park to open " + activity.name + ". No coins are spent automatically.";
+  else if (p.victory)
+    $("tip").textContent = p.overtime.active
+      ? "Fresh overtime gems are waiting. Bring your haul south to the deposit."
+      : "Keep your machine. Accept a free overtime job from Pause or the office pad.";
 }
 function closePanel() {
+  panelCleanup();
+  panelCleanup = () => {};
   dialog.close();
   modal = null;
   paused = !started;
@@ -217,6 +264,8 @@ function closePanel() {
 }
 function openPanel(kind: NonNullable<typeof modal>) {
   if (!started) return;
+  panelCleanup();
+  panelCleanup = () => {};
   modal = kind;
   paused = true;
   keys.clear();
@@ -224,14 +273,71 @@ function openPanel(kind: NonNullable<typeof modal>) {
   drag.cancel();
   const header = (eyebrow: string, title: string, copy: string) =>
     `<div class="panel-top"><span class="eyebrow">${eyebrow}</span><button class="close" aria-label="Close panel">×</button></div><h2>${title}</h2><p class="panel-copy">${copy}</p>`;
-  if (kind === "help") {
+  if (kind === "assay") {
+    $("panel-content").innerHTML = header(
+      "QUARRY COINS · OPTIONAL SIDE GAME",
+      "Lucky Assay.",
+      "Three crystals. A little luck. Choose your stake below.",
+    );
+    panelCleanup = mountAssayPanel(
+      $("panel-content"),
+      sim.progress,
+      () => {
+        save();
+        updateHud();
+      },
+      (win) => (win ? audio.upgrade() : audio.coin()),
+    );
+  } else if (kind === "contracts") {
+    const p = sim.progress,
+      job = overtimeContract(p.overtime.completed);
+    const active = p.overtime.active;
+    $("panel-content").innerHTML =
+      header(
+        "OVERTIME OFFICE · KEEP WHAT YOU BUILT",
+        !p.victory
+          ? "Finish the first big job."
+          : active
+            ? "Your contract is underway."
+            : "There's always another seam.",
+        !p.victory
+          ? "Clear all three sectors to unlock repeatable jobs with your current machine, upgrades and bank balance."
+          : active
+            ? "Your new haul is waiting in " +
+              SECTORS[job.sector].name +
+              ". Bring it south to the deposit."
+            : p.overtime.completed +
+              " overtime jobs completed. Accept a fresh delivery without resetting your quarry.",
+      ) +
+      (p.victory
+        ? '<div class="overtime-ticket"><span>CONTRACT ' +
+          job.number.toString().padStart(2, "0") +
+          "</span><h3>" +
+          SECTORS[job.sector].name +
+          "</h3><p><b>" +
+          job.count +
+          " gems</b> · " +
+          money(job.value + stats(p).gemBonus) +
+          " each</p><p>Completion bonus <b>" +
+          money(job.bonus) +
+          "</b></p><small>" +
+          (active
+            ? p.overtime.collected + " / " + job.count + " delivered"
+            : "FREE TO ACCEPT · NO UPGRADES LOST") +
+          "</small></div>"
+        : "") +
+      (p.victory && !active
+        ? '<button class="primary" id="start-overtime">Accept free contract →</button>'
+        : "") +
+      '<button class="text-button resume">Back to the quarry</button>';
+  } else if (kind === "help") {
     $("panel-content").innerHTML =
       header(
         "OPERATOR’S MANUAL",
         "A good day’s work.",
         "The blade does the gathering. The deposit does the selling.",
       ) +
-      `<div class="instructions"><p><b>01 / Sweep</b>W drives forward and S reverses without turning around. Left / right arrows steer; A / D also work. Space brakes.</p><p><b>02 / Deliver</b>Push gems onto the striped belt near the south end. Belts pull them into the dark hopper and pay you immediately.</p><p><b>03 / Grow</b>Park on a glowing platform to fund the rotating part above it. Money transfers gradually; partial funding is saved. Drive off and return for the next level. Find the key pads beside the gates. Find the magnet in Citrine Cut to gather stragglers, and the refinery in Amethyst Reach to increase every gem’s sale value. Opening sectors also unlocks stronger engine, plow and conveyor tiers.</p><p><b>04 / Finish</b>Clear all ${TOTAL_GEMS.toLocaleString()} gems to earn a fully upgraded victory lap. Every sector awards a halfway bonus.</p></div><div class="shortcut-list">C · camera &nbsp; / &nbsp; Scroll · zoom &nbsp; / &nbsp; M · sound &nbsp; / &nbsp; Esc · pause</div><p class="panel-note">Progress saves on this browser. Drag on the quarry to drive toward your finger; drag farther for more speed. Pull behind the machine to reverse; the stick turns coral. Release to brake. Direction buttons also work.</p><button class="primary resume">Back to the quarry →</button>`;
+      `<div class="instructions"><p><b>01 / Sweep</b>W drives forward and S reverses without turning around. Left / right arrows steer; A / D also work. Space brakes.</p><p><b>02 / Deliver</b>Push gems onto the striped belt near the south end. Belts pull them into the dark hopper and pay you immediately.</p><p><b>03 / Grow</b>Park on a glowing platform to fund the rotating part above it. Money transfers gradually; partial funding is saved. Drive off and return for the next level. Find the key pads beside the gates. Find the magnet in Citrine Cut to gather stragglers, and the refinery in Amethyst Reach to increase every gem’s sale value. Opening sectors also unlocks stronger engine, plow and conveyor tiers.</p><p><b>04 / Finish</b>Clear all ${TOTAL_GEMS.toLocaleString()} gems to unlock repeatable overtime contracts without losing your machine, or take a fully upgraded victory lap. Every sector awards a halfway bonus. Find Lucky Assay on the gold pad in Quartz Flats for an optional coin wager; the Overtime office is on the opposite side.</p></div><div class="shortcut-list">C · camera &nbsp; / &nbsp; Scroll · zoom &nbsp; / &nbsp; M · sound &nbsp; / &nbsp; Esc · pause</div><p class="panel-note">Progress saves on this browser. Drag on the quarry to drive toward your finger; drag farther for more speed. Pull behind the machine to reverse; the stick turns coral. Release to brake. Direction buttons also work.</p><button class="primary resume">Back to the quarry →</button>`;
   } else if (kind === "victory") {
     $("panel-content").innerHTML =
       header(
@@ -239,15 +345,15 @@ function openPanel(kind: NonNullable<typeof modal>) {
         "You moved mountains.",
         `All three sectors cleared. ${money(sim.progress.earned)} earned. Time to enjoy what you built.`,
       ) +
-      `<div class="victory-gem">◇</div><button class="primary" id="victory-lap">Take a victory lap →</button><p class="panel-note">A fresh quarry with every gate open and all equipment fully upgraded.</p><button class="text-button resume">Stay in my finished quarry</button>`;
+      `<div class="victory-gem">◇</div><button class="primary" id="open-overtime">Keep building · overtime contracts →</button><p class="panel-note">New deliveries. Richer gems. Keep your machine, upgrades and funds.</p><button class="text-button" id="victory-lap">Take a victory lap →</button><p class="panel-note">A fresh quarry with every gate open and all equipment fully upgraded.</p><button class="text-button resume">Stay in my finished quarry</button>`;
   } else if (kind === "reset") {
     $("panel-content").innerHTML =
       header(
         "START FRESH",
         "A new shift?",
-        "This replaces your saved quarry, funds and upgrades on this browser.",
+        "This clears this game’s saved quarry, coins, upgrades, Lucky Assay result and overtime history on this browser. You will start from zero.",
       ) +
-      `<button class="primary" id="confirm-reset">Start a new quarry →</button><button class="text-button resume">Keep my progress</button>`;
+      `<button class="primary" id="confirm-reset">Clear save & start again →</button><button class="text-button resume">Keep my progress</button>`;
   } else {
     $("panel-content").innerHTML =
       header(
@@ -255,7 +361,7 @@ function openPanel(kind: NonNullable<typeof modal>) {
         "Shift paused.",
         "Your machine and every gem will be right here.",
       ) +
-      `<button class="primary resume">Back to work →</button><button class="text-button" id="open-manual">Operator’s manual</button><button class="text-button" id="reset">Start a new quarry</button><p class="panel-note">${storageAvailable ? "Your progress is saved locally." : "Browser storage is unavailable. Keep this tab open to preserve your shift."}</p>`;
+      `<button class="primary resume">Back to work →</button><button class="text-button" id="open-manual">Operator’s manual</button><button class="text-button" id="open-overtime">Overtime contracts</button><button class="text-button" id="reset">Clear save & start again</button><p class="panel-note">${storageAvailable ? "Your progress is saved locally." : "Browser storage is unavailable. Keep this tab open to preserve your shift."}</p>`;
   }
   if (!dialog.open) dialog.showModal();
   dialog.querySelector(".close")?.addEventListener("click", closePanel);
@@ -263,7 +369,32 @@ function openPanel(kind: NonNullable<typeof modal>) {
     .querySelectorAll(".resume")
     .forEach((b) => b.addEventListener("click", closePanel));
   $("reset")?.addEventListener("click", () => openPanel("reset"));
-  $("confirm-reset")?.addEventListener("click", () => newShift(false));
+  $("confirm-reset")?.addEventListener("click", () => {
+    try {
+      localStorage.removeItem(SAVE_KEY);
+    } catch {
+      /* newShift reports storage failures. */
+    }
+    newShift(false);
+  });
+  $("open-overtime")?.addEventListener("click", () => openPanel("contracts"));
+  $("start-overtime")?.addEventListener("click", () => {
+    const next = sim.startOvertime();
+    if (!next) return;
+    pendingPayout.value = 0;
+    coins.clear();
+    sim = next;
+    view.sim = sim;
+    closePanel();
+    save();
+    updateHud();
+    audio.upgrade();
+    toast(
+      "Contract accepted. Fresh heaps in " +
+        SECTORS[overtimeContract(sim.progress.overtime.completed).sector].name +
+        ".",
+    );
+  });
   $("victory-lap")?.addEventListener("click", () => newShift(true));
   $("open-manual")?.addEventListener("click", () => openPanel("help"));
 }
@@ -322,7 +453,11 @@ $("start").addEventListener("click", () => {
     toast(
       "Denser heaps are ready. Your funds, upgrades and clearance progress are kept.",
     );
-  if (sim.progress.victory) openPanel("victory");
+  if (sim.progress.victory && !sim.progress.overtime.active)
+    openPanel(sim.progress.overtime.completed ? "contracts" : "victory");
+});
+$("activity-open").addEventListener("click", () => {
+  if (sim.activeActivity) openPanel(sim.activeActivity);
 });
 $("help").addEventListener("click", () => openPanel("help"));
 $("pause").addEventListener("click", () => {
@@ -486,6 +621,13 @@ function frame(now: number) {
           : "Upgrade fitted. Back to work.",
       );
     }
+    if (event.type === "activity") openPanel(event.activity);
+    if (event.type === "overtime-complete") {
+      audio.upgrade();
+      save();
+      toast("Overtime complete · " + money(event.bonus) + " bonus.");
+      openPanel("contracts");
+    }
     if (event.type === "victory") {
       audio.upgrade();
       save();
@@ -523,6 +665,7 @@ async function boot() {
   try {
     view = new QuarryView(canvas, sim);
     await view.load();
+    await document.fonts.ready;
     $("loading").hidden = true;
     $("welcome").hidden = false;
     updateHud();
