@@ -1,3 +1,4 @@
+import { VacuumView } from "./vacuum-view";
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import {
@@ -44,6 +45,7 @@ export class QuarryView {
     SECTORS[0].count,
     SECTORS[0].count + SECTORS[1].count,
   ];
+  vacuum!: VacuumView;
   platforms!: UpgradePlatforms;
   activities!: ActivityPlatforms;
   private elapsed = 0;
@@ -164,6 +166,7 @@ export class QuarryView {
       arc.rotation.x = -Math.PI / 2;
       this.field.add(arc);
     }
+    this.vacuum = new VacuumView(this.machine, this.scene);
     this.platforms = new UpgradePlatforms(this.machine);
     this.scene.add(this.platforms.group);
     this.activities = new ActivityPlatforms();
@@ -471,6 +474,7 @@ export class QuarryView {
     this.intake.getObjectByName("Refinery")?.children.forEach((drum) => {
       if (drum.name === "PolishingDrum") drum.rotation.y = time * 2;
     });
+    this.vacuum?.render(this.sim, dt, time);
     this.platforms?.render(this.sim, time);
     this.activities?.render(this.sim, time);
     this.magnet.visible = this.sim.progress.levels.magnet > 0;

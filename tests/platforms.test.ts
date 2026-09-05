@@ -143,7 +143,7 @@ test("version three keeps existing equipment and escrow even when the next tier 
   delete old.progress.funding.refinery;
   const saved = parseSave(JSON.stringify(old));
   assert.ok(saved);
-  assert.equal(saved.version, 5);
+  assert.equal(saved.version, 6);
   assert.equal(saved.progress.levels.refinery, 0);
   assert.equal(saved.progress.levels.engine, 5);
   assert.equal(padLockedSector(saved.progress, "engine"), null);
@@ -195,7 +195,7 @@ test("version two saves gain an unfitted magnet and empty platform funding", () 
   delete old.progress.funding;
   const restored = parseSave(JSON.stringify(old));
   assert.ok(restored);
-  assert.equal(restored.version, 5);
+  assert.equal(restored.version, 6);
   assert.equal(restored.progress.levels.magnet, 0);
   assert.equal(restored.progress.funding.engine, 0);
   assert.equal(restored.gems.length, 6300);

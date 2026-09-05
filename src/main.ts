@@ -62,6 +62,7 @@ app.innerHTML = `
   <aside class="pad-guide" id="pad-guide"><div class="eyebrow" id="pad-status">DRIVE-ON UPGRADES</div><strong id="pad-name">Find a glowing platform</strong><p id="pad-detail">Park on a pad to fund your next part.</p><div class="progress-track"><span id="pad-fill"></span></div><div class="pad-payment"><span id="pad-paid"></span><span id="pad-distance"></span></div></aside>
   <button id="activity-open" class="activity-open" hidden></button>
   <div id="touch-controls" aria-label="Touch driving controls"><button data-dir="up" aria-label="Drive forward">↑</button><button data-dir="left" aria-label="Steer left">←</button><button data-dir="down" aria-label="Reverse">↓</button><button data-dir="right" aria-label="Steer right">→</button><button data-dir="brake" aria-label="Brake">■</button></div>
+  <aside id="cargo-hud" hidden><span>VACUUM HOLD</span><strong id="cargo-count"></strong><div class="progress-track"><span id="cargo-fill"></span></div><small id="cargo-copy"></small></aside>
   <div id="toast" role="status" aria-live="polite"></div>
   <div id="loading"><span class="loader"></span><strong>Opening the quarry</strong><span>Unloading your machine…</span></div>
   <div class="welcome" id="welcome" hidden><div class="eyebrow">A LITTLE MACHINE. A LOT OF POSSIBILITY.</div><h1>Your quarry.<br>Your rules.</h1><p>Push gems. Grow your machine.<br>Turn a quiet patch of dirt into an empire.</p><button class="primary" id="start">${restored ? "Continue your shift" : "Start your shift"} <span>→</span></button><small>DRAG TO DRIVE · W / S & ← / → ALSO WORK</small></div>
@@ -117,6 +118,17 @@ function updateHud() {
     zone = SECTORS[sector],
     count = p.collected[sector];
   $("money").textContent = money(p.money);
+  const capacity = stats(p).vacuumCapacity,
+    cargo = sim.vacuum.cargo.length;
+  $("cargo-hud").hidden = !capacity;
+  $("cargo-count").textContent = cargo + " / " + capacity;
+  $("cargo-fill").style.width = (capacity ? (cargo / capacity) * 100 : 0) + "%";
+  $("cargo-copy").textContent = sim.vacuum.unloading
+    ? "REAR GATE OPEN · UNLOADING"
+    : cargo === capacity
+      ? "FULL · RETURN TO THE BELT"
+      : "Rear chute over belt to unload";
+
   $("location").textContent = `0${sector + 1} / ${zone.name.toUpperCase()}`;
   $("mineral").textContent = zone.mineral.toUpperCase();
   $("gem-value").textContent = `$${zone.value + stats(p).gemBonus} / GEM`;
@@ -337,7 +349,7 @@ function openPanel(kind: NonNullable<typeof modal>) {
         "A good day’s work.",
         "The blade does the gathering. The deposit does the selling.",
       ) +
-      `<div class="instructions"><p><b>01 / Sweep</b>W drives forward and S reverses without turning around. Left / right arrows steer; A / D also work. Space brakes.</p><p><b>02 / Deliver</b>Push gems onto the striped belt near the south end. Belts pull them into the dark hopper and pay you immediately.</p><p><b>03 / Grow</b>Park on a glowing platform to fund the rotating part above it. Money transfers gradually; partial funding is saved. Drive off and return for the next level. Find the key pads beside the gates. Find the magnet in Citrine Cut to gather stragglers, and the refinery in Amethyst Reach to increase every gem’s sale value. Opening sectors also unlocks stronger engine, plow and conveyor tiers.</p><p><b>04 / Finish</b>Clear all ${TOTAL_GEMS.toLocaleString()} gems to unlock repeatable overtime contracts without losing your machine, or take a fully upgraded victory lap. Every sector awards a halfway bonus. Find Lucky Assay on the gold pad in Quartz Flats for an optional coin wager; the Overtime office is on the opposite side.</p></div><div class="shortcut-list">C · camera &nbsp; / &nbsp; Scroll · zoom &nbsp; / &nbsp; M · sound &nbsp; / &nbsp; Esc · pause</div><p class="panel-note">Progress saves on this browser. Drag on the quarry to drive toward your finger; drag farther for more speed. Pull behind the machine to reverse; the stick turns coral. Release to brake. Direction buttons also work.</p><button class="primary resume">Back to the quarry →</button>`;
+      `<div class="instructions"><p><b>01 / Sweep</b>W drives forward and S reverses without turning around. Left / right arrows steer; A / D also work. Space brakes.</p><p><b>02 / Deliver</b>Push gems onto the striped belt near the south end. Belts pull them into the dark hopper and pay you immediately.</p><p><b>03 / Grow</b>Park on a glowing platform to fund the rotating part above it. Money transfers gradually; partial funding is saved. Drive off and return for the next level. Find the key pads beside the gates. Find the magnet in Citrine Cut to gather stragglers, and the refinery in Amethyst Reach to increase every gem’s sale value. The vacuum pad in Amethyst fits a front suction hose and a rear storage bin. Its three tiers hold 40, 90 or 180 gems. Drive your rear chute over the striped conveyor or its feeder to unload; coins arrive when the belt sells the gems. Opening sectors also unlocks stronger engine, plow and conveyor tiers.</p><p><b>04 / Finish</b>Clear all ${TOTAL_GEMS.toLocaleString()} gems to unlock repeatable overtime contracts without losing your machine, or take a fully upgraded victory lap. Every sector awards a halfway bonus. Find Lucky Assay on the gold pad in Quartz Flats for an optional coin wager; the Overtime office is on the opposite side.</p></div><div class="shortcut-list">C · camera &nbsp; / &nbsp; Scroll · zoom &nbsp; / &nbsp; M · sound &nbsp; / &nbsp; Esc · pause</div><p class="panel-note">Progress saves on this browser. Drag on the quarry to drive toward your finger; drag farther for more speed. Pull behind the machine to reverse; the stick turns coral. Release to brake. Direction buttons also work.</p><button class="primary resume">Back to the quarry →</button>`;
   } else if (kind === "victory") {
     $("panel-content").innerHTML =
       header(
@@ -409,6 +421,7 @@ function newShift(sandbox: boolean) {
       intake: 5,
       magnet: 5,
       refinery: 3,
+      vacuum: 3,
     };
     sim.progress.sector = 3;
     sim.progress.sandbox = true;

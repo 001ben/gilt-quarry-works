@@ -21,7 +21,7 @@ try {
   const results = [];
   for (const magnet of [0, 5]) {
     const result = await page.evaluate(
-      async ({ magnet, solver }) => {
+      async ({ magnet, solver, vacuum }) => {
         const { Matter, Simulation, view } = window.bench;
         const sim = new Simulation();
         view.sim = sim;
@@ -31,6 +31,7 @@ try {
           intake: 5,
           magnet,
           refinery: 3,
+          vacuum,
         };
         sim.progress.sector = 3;
         sim.gateOpening = [1, 1];
@@ -121,9 +122,15 @@ try {
           motion,
           escaped,
           gems: sim.gems.size,
+          cargo: sim.vacuum.cargo.length,
+          vacuum,
         };
       },
-      { magnet, solver: process.env.GILT_SOLVER },
+      {
+        magnet,
+        solver: process.env.GILT_SOLVER,
+        vacuum: Number(process.env.GILT_BENCH_VACUUM ?? 0),
+      },
     );
     results.push(result);
     await page.screenshot({

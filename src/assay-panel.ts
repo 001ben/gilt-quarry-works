@@ -1,3 +1,4 @@
+import { crystalArt } from "./crystal-art";
 import { ASSAY_BETS, CRYSTALS, playAssay, type AssayResult } from "./assay";
 import type { Progress } from "./progression";
 
@@ -10,7 +11,25 @@ export function mountAssayPanel(
 ) {
   const area = document.createElement("section");
   area.className = "assay-game";
-  area.innerHTML = `<div class="assay-machine" aria-label="Three crystal reels"><div class="assay-reels">${[0, 1, 2].map(() => '<div class="assay-reel"><strong>◇</strong><span>READY</span></div>').join("")}</div><div class="assay-lights">● ● ● ● ● ● ● ● ●</div></div>
+  const symbol = (face: number) =>
+    '<div class="reel-symbol">' +
+    crystalArt(face) +
+    "<span>" +
+    CRYSTALS[face] +
+    "</span></div>";
+  const initialReels = [0, 1, 2]
+    .map(
+      (face) =>
+        '<div class="assay-reel"><div class="reel-window">' +
+        symbol(face) +
+        "</div></div>",
+    )
+    .join("");
+  const celebration = Array.from(
+    { length: 8 },
+    (_, i) => '<i style="--coin:' + i + '">✦</i>',
+  ).join("");
+  area.innerHTML = `<div class="assay-machine" aria-label="Three crystal reels"><div class="assay-marquee"><span>◇ LUCKY ASSAY ◇</span><strong>TRIPLE CRYSTALS · 6× RETURN</strong></div><div class="assay-reels">${initialReels}</div><div class="assay-lights">● ● ● ● ● ● ● ● ●</div><div class="assay-celebration" aria-hidden="true">${celebration}</div></div>
     <div class="assay-bank">QUARRY COINS <strong id="assay-balance"></strong></div>
     <div class="assay-bets" role="group" aria-label="Choose your stake">${ASSAY_BETS.map((bet) => `<button data-bet="${bet}" aria-pressed="false">$${bet}</button>`).join("")}</div>
     <button class="primary" id="assay-spin"></button>
@@ -23,11 +42,13 @@ export function mountAssayPanel(
   const buttons = [...area.querySelectorAll<HTMLButtonElement>("[data-bet]")];
   const reels = [...area.querySelectorAll<HTMLElement>(".assay-reel")];
   let bet: number = 10,
-    busy = false;
+    busy = false,
+    balanceDuringSpin = 0;
   const timers: number[] = [];
+  const animations: Animation[] = [];
   const refresh = () => {
     area.querySelector("#assay-balance")!.textContent =
-      "$" + p.money.toLocaleString("en-US");
+      "$" + (busy ? balanceDuringSpin : p.money).toLocaleString("en-US");
     for (const b of buttons) {
       b.disabled = busy || Number(b.dataset.bet) > p.money;
       b.setAttribute("aria-pressed", String(Number(b.dataset.bet) === bet));
@@ -43,8 +64,7 @@ export function mountAssayPanel(
     const face = r.faces[i];
     reels[i].classList.remove("turning");
     reels[i].dataset.crystal = String(face);
-    reels[i].innerHTML =
-      `<strong>${["◆", "⬟", "◈", "⬢"][face]}</strong><span>${CRYSTALS[face]}</span>`;
+    reels[i].innerHTML = '<div class="reel-window">' + symbol(face) + "</div>";
   };
   const describe = (r: AssayResult) =>
     r.payout > r.bet
@@ -65,33 +85,65 @@ export function mountAssayPanel(
   );
   spin.addEventListener("click", () => {
     if (busy) return;
+    balanceDuringSpin = p.money - bet;
     const settled = playAssay(p, bet);
     if (!settled) return;
     busy = true;
     onSettled();
     refresh();
-    result.textContent = "Stake settled. Revealing your crystals…";
+    result.textContent = "Revealing your crystals…";
+    area.classList.remove("assay-win");
     reels.forEach((reel, i) => {
       reel.classList.add("turning");
-      timers.push(
-        window.setTimeout(
-          () => {
-            showFace(settled, i);
-            sound(false);
-            if (i === 2) {
-              busy = false;
-              timers.length = 0;
-              result.textContent = describe(settled);
-              area.classList.toggle("assay-win", settled.payout > settled.bet);
-              if (settled.payout > settled.bet) sound(true);
-              refresh();
-            }
-          },
-          350 + i * 250,
+      const sequence = Array.from(
+        { length: 16 + i * 4 },
+        (_, j) => (j + i) % 4,
+      );
+      sequence.push(settled.faces[i]);
+      reel.innerHTML =
+        '<div class="reel-window"><div class="reel-strip">' +
+        sequence.map(symbol).join("") +
+        "</div></div>";
+      const strip = reel.querySelector<HTMLElement>(".reel-strip")!;
+      const height = reel
+        .querySelector<HTMLElement>(".reel-symbol")!
+        .getBoundingClientRect().height;
+      const duration = matchMedia("(prefers-reduced-motion: reduce)").matches
+        ? 100
+        : 1100 + i * 350;
+      animations.push(
+        strip.animate(
+          [
+            { transform: "translateY(0)" },
+            {
+              transform:
+                "translateY(-" + (sequence.length - 1) * height + "px)",
+            },
+          ],
+          { duration, easing: "cubic-bezier(.12,.7,.12,1)", fill: "forwards" },
         ),
+      );
+      timers.push(
+        window.setTimeout(() => {
+          showFace(settled, i);
+          sound(false);
+          if (i === 2) {
+            busy = false;
+            timers.length = 0;
+            animations.forEach((a) => a.cancel());
+            animations.length = 0;
+            result.textContent = describe(settled);
+            area.classList.toggle("assay-win", settled.payout > settled.bet);
+            if (settled.payout > settled.bet) sound(true);
+            refresh();
+          }
+        }, duration),
       );
     });
   });
   refresh();
-  return () => timers.forEach(clearTimeout);
+  return () => {
+    timers.forEach(clearTimeout);
+    animations.forEach((a) => a.cancel());
+  };
 }

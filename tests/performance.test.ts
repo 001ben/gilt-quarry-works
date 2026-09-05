@@ -99,6 +99,7 @@ test("maximum plow contains a 300-stone compressed load against a barrier", () =
     intake: 5,
     magnet: 5,
     refinery: 3,
+    vacuum: 0,
   };
   sim.rebuildDozer();
   sim.teleport(0, 0, 0);

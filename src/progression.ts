@@ -1,10 +1,12 @@
-export type Upgrade = "engine" | "blade" | "intake" | "magnet" | "refinery";
+export type Upgrade =
+  "engine" | "blade" | "intake" | "magnet" | "refinery" | "vacuum";
 export const UPGRADE_MAX: Record<Upgrade, number> = {
   engine: 5,
   blade: 5,
   intake: 5,
   magnet: 5,
   refinery: 3,
+  vacuum: 3,
 };
 export type PadId = Upgrade | "gate1" | "gate2";
 export const PADS: { id: PadId; name: string; x: number; y: number }[] = [
@@ -14,6 +16,7 @@ export const PADS: { id: PadId; name: string; x: number; y: number }[] = [
   { id: "magnet", name: "MAGNET", x: 350, y: -535 },
   { id: "gate1", name: "CITRINE KEY", x: 335, y: -345 },
   { id: "gate2", name: "AMETHYST KEY", x: 335, y: -915 },
+  { id: "vacuum", name: "VACUUM", x: 350, y: -1230 },
   { id: "refinery", name: "REFINERY", x: -350, y: -1090 },
 ];
 export const emptyFunding = (): Record<PadId, number> => ({
@@ -22,6 +25,7 @@ export const emptyFunding = (): Record<PadId, number> => ({
   intake: 0,
   magnet: 0,
   refinery: 0,
+  vacuum: 0,
   gate1: 0,
   gate2: 0,
 });
@@ -85,7 +89,14 @@ export function freshProgress(): Progress {
     overtime: { completed: 0, active: false, collected: 0 },
     money: 0,
     earned: 0,
-    levels: { engine: 1, blade: 1, intake: 1, magnet: 0, refinery: 0 },
+    levels: {
+      engine: 1,
+      blade: 1,
+      intake: 1,
+      magnet: 0,
+      refinery: 0,
+      vacuum: 0,
+    },
     funding: emptyFunding(),
     sector: 1,
     collected: [0, 0, 0],
@@ -95,6 +106,7 @@ export function freshProgress(): Progress {
   };
 }
 export function upgradeCost(p: Progress, kind: Upgrade): number | null {
+  if (kind === "vacuum") return [700, 1400, 2800][p.levels.vacuum] ?? null;
   if (kind === "refinery") return [450, 900, 1800][p.levels.refinery] ?? null;
   return p.levels[kind] >= UPGRADE_MAX[kind]
     ? null
@@ -122,6 +134,7 @@ export function stats(p: Progress) {
     magnetRange: p.levels.magnet ? 55 + p.levels.magnet * 24 : 0,
     magnetStrength: p.levels.magnet * 0.045,
     gemBonus: p.levels.refinery,
+    vacuumCapacity: [0, 40, 90, 180][p.levels.vacuum],
   };
 }
 export function padCost(p: Progress, id: PadId): number | null {
@@ -137,7 +150,7 @@ export function padLockedSector(p: Progress, id: PadId): number | null {
   let required: number;
   if (id === "gate1") required = 1;
   else if (id === "gate2") required = 2;
-  else if (id === "refinery") required = 3;
+  else if (id === "refinery" || id === "vacuum") required = 3;
   else {
     const next = p.levels[id] + 1;
     required =
@@ -170,6 +183,12 @@ export function padDetail(p: Progress, id: PadId, installed = false): string {
     blade: `${s.bladeWidth.toFixed(1)} m plow${s.wings ? " with retaining wings" : " working width"}`,
     intake: `${(s.intakeWidth / 30).toFixed(0)} m belt · ${(s.feederLength / 30).toFixed(0)} m feeder`,
     magnet: `Level ${next.levels.magnet} · ${(s.magnetRange / 30).toFixed(1)} m magnetic reach`,
+    vacuum:
+      "Level " +
+      next.levels.vacuum +
+      " · " +
+      s.vacuumCapacity +
+      " gems · rear belt unload",
     refinery: `Level ${next.levels.refinery} · +$${s.gemBonus} for every gem sold`,
   }[id];
 }

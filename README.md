@@ -51,18 +51,19 @@ Drag anywhere on the quarry to bring up a floating joystick. Drag toward the dir
 - Conveyors animate toward the hopper and grow from a 3 m span to 28 m, with an 11 m forward feeder at maximum level.
 - A front boom magnet starts with a slow pull on small stones, then gains range and strength. It gathers loose stones across the blade and lets packed loads settle. Ground pulses show its reach.
 - Engine and plow pads sit together in Quartz Flats; the conveyor stays opposite. Magnet upgrades live in Citrine Cut, and the refinery in Amethyst Reach. Quartz offers equipment through level 3; Citrine unlocks level 4 and magnet levels 1–3; Amethyst opens the final tiers.
+- The Zone 3 vacuum pad fits a suction mouth, translucent ribbed hose and an open rear hopper. Its $700 / $1,400 / $2,800 tiers hold 40 / 90 / 180 gems and visibly enlarge the bin. Suction stops at capacity. Position the rear chute over the main conveyor or feeder to tip the bin, open the twin gates and drop physical gems onto the belt. Carried gems save with the machine and pay only when sold; cargo never prematurely completes a sector or overtime job.
 - The refinery adds $1 per gem at each of its three levels, costs $450 / $900 / $1,800, and adds animated polishing drums behind the hopper.
 - Occupied pads expand, fill with color and light around their perimeter, and lift the rotating part plus an overhead progress bar above the dozer.
 - Two red key platforms sit beside the lane, turn green on purchase, and shrink away as the gates lower over 1.5 seconds. Keys are free after the preceding sector is completely cleared.
 - Half-clearance contract bonuses, collection particles, batched flying coins into the bank and back to platforms, payment chimes and synthesized sound.
-- Lucky Assay: park on the gold die platform in Quartz Flats to open a three-crystal coin game. Choose a $10 / $50 / $100 / $500 stake. A triple returns 6× including the stake (6.25%); a pair returns the stake (56.25%); three different crystals return $0 (37.5%). Quarry coins only. Each result settles and saves before its reveal, with no autoplay.
+- Lucky Assay: park on the gold die platform in Quartz Flats to open a three-crystal coin game with faceted artwork, scrolling reel strips, staggered stops and a win celebration. Choose a $10 / $50 / $100 / $500 stake. A triple returns 6× including the stake (6.25%); a pair returns the stake (56.25%); three different crystals return $0 (37.5%). Quarry coins only. Each result settles and saves before its reveal, with no autoplay.
 - Overtime contracts after campaign completion: accept free jobs at the office opposite Lucky Assay, from Pause, or from the completion screen. Keep funds and equipment, rotate through all three sectors, earn richer per-gem payouts and completion bonuses. Deliveries grow from 600 to a maximum of 900 stones; only one contract is active at a time. Even an empty bank can accept a job.
 - Completion screen also offers the original fresh fully upgraded victory lap. “Clear save & start again” in Pause has a separate confirmation and resets only this game’s progress.
 - Automatic browser-local saves: remaining gems and their positions, money, upgrades, partial platform funding, contracts and machine position. Original sparse-layout saves migrate funds, equipment and clearance fractions to the new heap layout. New quarry reset requires an explicit confirmation.
 
 The simulation is planar Matter.js physics with a Three.js presentation; it is not deformable terrain or a full vehicle dynamics simulator. Actual mobile-device performance and subjective campaign pacing remain to be evaluated beyond the included browser viewport checks.
 
-Existing saves retain their owned equipment and partial payments. Saves migrate to version 5, including settled Lucky Assay results and active overtime deliveries; equipment already owned remains usable even if its next tier now requires a deeper sector.
+Existing saves retain their owned equipment and partial payments. Saves migrate to version 6, including settled Lucky Assay results and active overtime deliveries; equipment already owned remains usable even if its next tier now requires a deeper sector.
 
 ## Original artwork
 

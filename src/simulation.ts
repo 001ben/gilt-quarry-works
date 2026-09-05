@@ -1,3 +1,4 @@
+import { Vacuum } from "./vacuum";
 import Matter from "matter-js";
 import { activityAt, type Activity } from "./activities";
 import { validAssay } from "./assay";
@@ -18,7 +19,7 @@ import {
   Upgrade,
   upgradeCost,
 } from "./progression";
-import { generateGemLayout } from "./gems";
+import { generateGemLayout, type GemSeed } from "./gems";
 const { Bodies, Body, Composite, Engine, Sleeping } = Matter;
 export const UNIT = 30;
 export const COLLECTOR = { x: 0, y: 245 };
@@ -38,7 +39,8 @@ export type GameEvent =
   | { type: "overtime-complete"; bonus: number }
   | { type: "victory" };
 export interface SaveData {
-  version: 5;
+  version: 6;
+  cargo: number[];
   completedPad?: PadId;
   progress: Progress;
   machine: { x: number; y: number; angle: number };
@@ -52,7 +54,7 @@ export function parseSave(raw: string | null): SaveData | null {
       },
       p = s.progress;
     if (
-      ![1, 2, 3, 4, 5].includes(s.version) ||
+      ![1, 2, 3, 4, 5, 6].includes(s.version) ||
       !p ||
       !p.levels ||
       !s.machine ||
@@ -92,6 +94,19 @@ export function parseSave(raw: string | null): SaveData | null {
       p.lastAssay = null;
       p.overtime = { completed: 0, active: false, collected: 0 };
     }
+    if (s.version < 6) {
+      p.levels.vacuum = 0;
+      if (p.funding) p.funding.vacuum = 0;
+      s.cargo = [];
+    }
+    if (
+      !Number.isInteger(p.levels.vacuum) ||
+      p.levels.vacuum < 0 ||
+      p.levels.vacuum > 3 ||
+      !Array.isArray(s.cargo) ||
+      s.cargo.length > stats(p).vacuumCapacity
+    )
+      return null;
     const overtime = p.overtime;
     if (
       !validAssay(p.lastAssay) ||
@@ -169,21 +184,32 @@ export function parseSave(raw: string | null): SaveData | null {
       ids.add(g.id);
       remaining[g.id < counts[0] ? 0 : g.id < counts[0] + counts[1] ? 1 : 2]++;
     }
+    for (const id of s.cargo) {
+      if (
+        !Number.isInteger(id) ||
+        id < 0 ||
+        id >= counts.reduce((a, b) => a + b, 0) ||
+        ids.has(id)
+      )
+        return null;
+      ids.add(id);
+      remaining[id < counts[0] ? 0 : id < counts[0] + counts[1] ? 1 : 2]++;
+    }
     if (overtime.active) {
       const layout = generateOvertimeLayout(overtime.completed);
       const allowed = new Set(layout.map((g) => g.id));
       if (
         !p.collected.every((n, i) => n === counts[i]) ||
         !p.bonuses.every(Boolean) ||
-        s.gems.length === 0 ||
-        overtime.collected + s.gems.length !== layout.length ||
-        !s.gems.every((g) => allowed.has(g.id))
+        s.gems.length + s.cargo.length === 0 ||
+        overtime.collected + s.gems.length + s.cargo.length !== layout.length ||
+        ![...ids].every((id) => allowed.has(id))
       )
         return null;
     } else {
       if (!remaining.every((n, i) => n + p.collected[i] === counts[i]))
         return null;
-      if (p.victory !== (s.gems.length === 0)) return null;
+      if (p.victory !== (s.gems.length + s.cargo.length === 0)) return null;
     }
     if (s.version === 1) {
       // Keep funds, equipment and clearance fractions when moving to the denser layout.
@@ -196,13 +222,14 @@ export function parseSave(raw: string | null): SaveData | null {
         (g) => skipped[g.sector]++ >= progress.collected[g.sector],
       );
       return {
-        version: 5,
+        version: 6,
+        cargo: [],
         progress,
         machine: s.machine,
         gems: gems.map(({ id, x, y, angle }) => ({ id, x, y, angle })),
       };
     }
-    return { ...s, version: 5 };
+    return { ...s, version: 6 };
   } catch {
     return null;
   }
@@ -216,6 +243,7 @@ export class Simulation {
     velocityIterations: 4,
   });
   progress: Progress;
+  vacuum = new Vacuum(this);
   gems = new Map<number, Gem>();
   dozer!: Matter.Body;
   chassis!: Matter.Body;
@@ -277,27 +305,30 @@ export class Simulation {
     const layout = this.progress.overtime.active
       ? generateOvertimeLayout(this.progress.overtime.completed)
       : generateGemLayout();
+    const cargo = new Set(save?.cargo ?? []);
     for (const seed of layout) {
-      const { id, sector, radius, value } = seed;
-      let { x, y } = seed;
-      const persisted = stored?.get(id);
-      if (stored && !persisted) continue;
-      if (persisted) {
-        x = persisted.x;
-        y = persisted.y;
+      if (cargo.has(seed.id)) {
+        this.vacuum.cargo.push(seed);
+        continue;
       }
-      const body = Bodies.circle(x, y, radius, {
-        density: 0.0009,
-        friction: 0.05,
-        frictionAir: 0.07,
-        restitution: 0.04,
-        label: "gem",
-      });
-      Body.setAngle(body, persisted?.angle ?? seed.angle);
-      Sleeping.set(body, true);
-      this.gems.set(id, { id, sector, body, radius, value });
-      Composite.add(this.engine.world, body);
+      const persisted = stored?.get(seed.id);
+      if (stored && !persisted) continue;
+      this.spawnGem({ ...seed, ...persisted });
     }
+  }
+  spawnGem(seed: GemSeed) {
+    const { id, sector, radius, value, x, y, angle } = seed;
+    const body = Bodies.circle(x, y, radius, {
+      density: 0.0009,
+      friction: 0.05,
+      frictionAir: 0.07,
+      restitution: 0.04,
+      label: "gem",
+    });
+    Body.setAngle(body, angle);
+    Sleeping.set(body, true);
+    this.gems.set(id, { id, sector, body, radius, value });
+    Composite.add(this.engine.world, body);
   }
   get position() {
     return this.chassis.position;
@@ -540,6 +571,7 @@ export class Simulation {
       }
     }
     Engine.update(this.engine, 1000 / 60);
+    this.vacuum.update();
     this.fundPlatform();
     this.visitActivity();
     const heading = (previous.angle + b.angle) / 2;
@@ -572,7 +604,7 @@ export class Simulation {
     });
     if (p.overtime.active) {
       p.overtime.collected++;
-      if (this.gems.size === 0) {
+      if (this.gems.size === 0 && this.vacuum.cargo.length === 0) {
         const { bonus } = overtimeContract(p.overtime.completed);
         p.overtime = {
           completed: p.overtime.completed + 1,
@@ -596,7 +628,7 @@ export class Simulation {
         text: `${sector.name}: halfway cleared · +$${sector.bonus} contract bonus`,
       });
     }
-    if (this.gems.size === 0 && !p.victory) {
+    if (this.gems.size === 0 && this.vacuum.cargo.length === 0 && !p.victory) {
       p.victory = true;
       this.events.push({ type: "victory" });
     }
@@ -605,7 +637,8 @@ export class Simulation {
     if (
       !this.progress.victory ||
       this.progress.overtime.active ||
-      this.gems.size
+      this.gems.size ||
+      this.vacuum.cargo.length
     )
       return null;
     const save = this.snapshot();
@@ -688,7 +721,8 @@ export class Simulation {
   }
   snapshot(): SaveData {
     return {
-      version: 5,
+      version: 6,
+      cargo: this.vacuum.cargo.map((g) => g.id),
       completedPad: this.padCompleted
         ? (this.activePad ?? undefined)
         : undefined,

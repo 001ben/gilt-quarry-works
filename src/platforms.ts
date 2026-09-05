@@ -1,3 +1,4 @@
+import { createVacuum } from "./vacuum-model";
 import * as THREE from "three";
 import {
   PADS,
@@ -126,6 +127,7 @@ export class UpgradePlatforms {
         const s = stats(next);
         let model: THREE.Group;
         if (gate) model = createKey();
+        else if (pad.id === "vacuum") model = createVacuum(displayLevel);
         else if (pad.id === "refinery") model = createRefinery(displayLevel);
         else if (pad.id === "magnet") model = createMagnet();
         else if (pad.id === "intake")

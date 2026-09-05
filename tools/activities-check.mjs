@@ -85,6 +85,35 @@ try {
     settled.progress.lastAssay,
   );
 
+  // Verify the new rolling strips move, stop at the settled faces, and clean up.
+  await page.evaluate(() => {
+    window.originalRandom = crypto.getRandomValues.bind(crypto);
+    crypto.getRandomValues = (array) => {
+      array.fill(0);
+      return array;
+    };
+  });
+  await page.locator("#assay-spin").click();
+  await page.evaluate(() => {
+    crypto.getRandomValues = window.originalRandom;
+  });
+  const firstTransform = await page
+    .locator(".reel-strip")
+    .first()
+    .evaluate((e) => getComputedStyle(e).transform);
+  await page.waitForTimeout(150);
+  const nextTransform = await page
+    .locator(".reel-strip")
+    .first()
+    .evaluate((e) => getComputedStyle(e).transform);
+  assert.notEqual(firstTransform, nextTransform);
+  await page.screenshot({ path: ".local/assay-spinning.png" });
+  await page.waitForTimeout(1900);
+  assert.match(await page.locator("#assay-result").innerText(), /Triple!/);
+  assert.equal(await page.locator(".reel-strip").count(), 0);
+  assert.equal(await page.locator("#assay-spin").isEnabled(), true);
+  await page.screenshot({ path: ".local/assay-win.png" });
+
   // Zero coins still allow another free post-campaign job.
   const victory = structuredClone(fresh);
   victory.gems = [];
@@ -95,7 +124,14 @@ try {
     victory: true,
     collected: [1800, 2100, 2400],
     bonuses: [true, true, true],
-    levels: { engine: 5, blade: 5, intake: 5, magnet: 5, refinery: 3 },
+    levels: {
+      engine: 5,
+      blade: 5,
+      intake: 5,
+      magnet: 5,
+      refinery: 3,
+      vacuum: 0,
+    },
   });
   await load(victory);
   await page.locator("#open-overtime").click();

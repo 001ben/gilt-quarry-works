@@ -17,6 +17,7 @@ function finishedQuarry() {
     intake: 5,
     magnet: 5,
     refinery: 3,
+    vacuum: 0,
   };
   return new Simulation(sim.snapshot());
 }
@@ -76,7 +77,7 @@ test("old saves migrate and settled assay outcomes survive reload", () => {
     delete (legacy.progress as Partial<typeof legacy.progress>).overtime;
     delete (legacy.progress as Partial<typeof legacy.progress>).lastAssay;
     const migrated = parseSave(JSON.stringify(legacy))!;
-    assert.equal(migrated.version, 5);
+    assert.equal(migrated.version, 6);
     assert.equal(migrated.progress.lastAssay, null);
     assert.deepEqual(migrated.progress.overtime, {
       completed: 0,
