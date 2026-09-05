@@ -43,7 +43,13 @@ try {
         const { Matter, Simulation, view } = window.bench;
         const sim = new Simulation();
         view.sim = sim;
-        sim.progress.levels = { engine: 5, blade: 5, intake: 5, magnet: 5 };
+        sim.progress.levels = {
+          engine: 5,
+          blade: 5,
+          intake: 5,
+          magnet: 5,
+          refinery: 0,
+        };
         sim.rebuildDozer();
         sim.teleport(
           scenario === "idle" ? -300 : 0,

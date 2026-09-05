@@ -45,6 +45,7 @@ test("intake upgrades convey gems beyond the original hopper reach", () => {
 test("upgrades preserve chassis position and match blade collision width", () => {
   const sim = new Simulation();
   sim.teleport(210, -190, 0.7);
+  sim.progress.sector = 3;
   sim.progress.money = 1e5;
   sim.progress.earned = 1e5;
   for (const kind of ["engine", "blade"] as const)

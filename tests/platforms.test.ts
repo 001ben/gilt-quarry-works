@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import Matter from "matter-js";
 import { Simulation, parseSave, COLLECTOR } from "../src/simulation";
-import { PADS } from "../src/progression";
+import { PADS, padLockedSector } from "../src/progression";
 const idle = { throttle: 0, steer: 0, brake: true };
 function step(sim: Simulation, frames: number) {
   for (let i = 0; i < frames; i++) sim.update(idle);
@@ -55,7 +55,7 @@ test("platform escrow survives leaving and reloading, then fits only one level p
 test("a fully cleared sector refunds partial key funding and lowers the physical gate before passage", () => {
   const sim = new Simulation();
   sim.progress.money = sim.progress.earned = 30;
-  sim.teleport(0, -345, 0);
+  sim.teleport(335, -345, 0);
   step(sim, 60);
   assert.equal(sim.progress.funding.gate1, 30);
   for (const gem of [...sim.gems.values()].filter((g) => g.sector === 0))
@@ -74,6 +74,86 @@ test("a fully cleared sector refunds partial key funding and lowers the physical
   assert.equal(sim.gates.length, 2);
   step(sim, 46);
   assert.equal(sim.gates.length, 1);
+  assert.equal(
+    sim.activePad,
+    null,
+    "finished key pad leaves the driving route",
+  );
+});
+
+test("deeper sectors unlock stronger equipment and new machinery", () => {
+  const sim = new Simulation();
+  sim.progress.money = sim.progress.earned = 100000;
+  assert.equal(sim.purchase("magnet"), false);
+  assert.equal(sim.purchase("refinery"), false);
+  for (const kind of ["engine", "blade", "intake"] as const) {
+    assert.ok(sim.purchase(kind));
+    assert.ok(sim.purchase(kind));
+    assert.equal(sim.purchase(kind), false);
+    assert.equal(padLockedSector(sim.progress, kind), 2);
+  }
+  assert.ok(sim.purchase("gate"));
+  for (const kind of ["engine", "blade", "intake"] as const) {
+    assert.ok(sim.purchase(kind));
+    assert.equal(sim.purchase(kind), false);
+  }
+  for (let i = 0; i < 3; i++) assert.ok(sim.purchase("magnet"));
+  assert.equal(sim.purchase("magnet"), false);
+  assert.equal(sim.purchase("refinery"), false);
+  assert.ok(sim.purchase("gate"));
+  for (const kind of [
+    "engine",
+    "blade",
+    "intake",
+    "magnet",
+    "refinery",
+  ] as const)
+    assert.ok(sim.purchase(kind));
+});
+
+test("refinery pays its bonus once per gem and preserves it through saves", () => {
+  const sim = new Simulation();
+  sim.progress.sector = 3;
+  sim.progress.money = sim.progress.earned = 10000;
+  for (let level = 1; level <= 3; level++) {
+    assert.ok(sim.purchase("refinery"));
+    const wallet = sim.progress.money,
+      earned = sim.progress.earned;
+    const gem = sim.gems.values().next().value!;
+    sim.collect(gem);
+    sim.collect(gem);
+    assert.equal(sim.progress.money, wallet + gem.value + level);
+    assert.equal(sim.progress.earned, earned + gem.value + level);
+  }
+  assert.equal(sim.purchase("refinery"), false);
+  const restored = parseSave(JSON.stringify(sim.snapshot()));
+  assert.ok(restored);
+  assert.deepEqual(restored.progress, sim.progress);
+});
+
+test("version three keeps existing equipment and escrow even when the next tier moves deeper", () => {
+  const old = JSON.parse(JSON.stringify(new Simulation().snapshot()));
+  old.version = 3;
+  old.progress.levels.engine = 5;
+  old.progress.levels.magnet = 3;
+  old.progress.funding.magnet = 80;
+  old.progress.earned = 1000;
+  old.progress.money = 100;
+  delete old.progress.levels.refinery;
+  delete old.progress.funding.refinery;
+  const saved = parseSave(JSON.stringify(old));
+  assert.ok(saved);
+  assert.equal(saved.version, 4);
+  assert.equal(saved.progress.levels.refinery, 0);
+  assert.equal(saved.progress.levels.engine, 5);
+  assert.equal(padLockedSector(saved.progress, "engine"), null);
+  assert.equal(saved.progress.funding.magnet, 80);
+  assert.equal(padLockedSector(saved.progress, "magnet"), 3);
+  const sim = new Simulation(saved);
+  sim.teleport(350, -535);
+  step(sim, 60);
+  assert.equal(sim.progress.money, 100);
+  assert.equal(sim.progress.funding.magnet, 80);
 });
 test("maximum conveyor catches far-edge stragglers and its long forward feeder delivers them", () => {
   const sim = new Simulation();
@@ -115,7 +195,7 @@ test("version two saves gain an unfitted magnet and empty platform funding", () 
   delete old.progress.funding;
   const restored = parseSave(JSON.stringify(old));
   assert.ok(restored);
-  assert.equal(restored.version, 3);
+  assert.equal(restored.version, 4);
   assert.equal(restored.progress.levels.magnet, 0);
   assert.equal(restored.progress.funding.engine, 0);
   assert.equal(restored.gems.length, 6300);

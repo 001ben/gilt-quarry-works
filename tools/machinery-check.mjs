@@ -104,7 +104,7 @@ assert.equal(result.hologramPaused, true);
 const gate = await page.evaluate(() => {
   const { sim, view } = window.inspection;
   sim.progress.money = sim.progress.earned = 350;
-  sim.teleport(0, -345, 0);
+  sim.teleport(335, -345, 0);
   for (let i = 0; i < 300; i++)
     sim.update({ throttle: 0, steer: 0, brake: true });
   view.render(1 / 60, 0);

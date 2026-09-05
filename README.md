@@ -47,16 +47,20 @@ Touch devices have forward, reverse, steering and brake buttons. Start your shif
 
 - 6,300 small physical gems in packed heaps: 1,800 quartz, 2,100 citrine and 2,400 amethyst.
 - Two continuous 40-link track chains follow measured ground travel, reverse direction, and counter-rotate during pivot turns.
-- Five engine/chassis levels, five blade widths (with wings from level three), five working collector configurations, and an optional five-level front magnet.
+- Five engine/chassis levels, five blade widths (with wings from level three), five working collector configurations, an optional five-level front magnet, and a three-level gem refinery.
 - Conveyors animate toward the hopper and grow from a 3 m span to 28 m, with an 11 m forward feeder at maximum level.
 - A front boom magnet starts with a slow pull on small stones, then gains range and strength. Ground pulses show its reach.
-- Upgrade pads show rotating holograms of the runtime parts, funding totals and physical progress bars.
-- Two red key platforms turn green on purchase and lower the gates over 1.5 seconds. Keys are free after the preceding sector is completely cleared.
-- Half-clearance contract bonuses, collection particles, flying payouts and synthesized sound.
+- Engine and plow pads sit together in Quartz Flats; the conveyor stays opposite. Magnet upgrades live in Citrine Cut, and the refinery in Amethyst Reach. Quartz offers equipment through level 3; Citrine unlocks level 4 and magnet levels 1–3; Amethyst opens the final tiers.
+- The refinery adds $1 per gem at each of its three levels, costs $450 / $900 / $1,800, and adds animated polishing drums behind the hopper.
+- Occupied pads expand, fill with color and light around their perimeter, and lift the rotating part plus an overhead progress bar above the dozer.
+- Two red key platforms sit beside the lane, turn green on purchase, and shrink away as the gates lower over 1.5 seconds. Keys are free after the preceding sector is completely cleared.
+- Half-clearance contract bonuses, collection particles, batched flying coins into the bank and back to platforms, payment chimes and synthesized sound.
 - Completion screen and a fresh fully upgraded victory lap.
 - Automatic browser-local saves: remaining gems and their positions, money, upgrades, partial platform funding, contracts and machine position. Original sparse-layout saves migrate funds, equipment and clearance fractions to the new heap layout. New quarry reset requires an explicit confirmation.
 
 The simulation is planar Matter.js physics with a Three.js presentation; it is not deformable terrain or a full vehicle dynamics simulator. Actual mobile-device performance and subjective campaign pacing remain to be evaluated beyond the included browser viewport checks.
+
+Existing saves retain their owned equipment and partial payments. Saves migrate to version 4; equipment already owned remains usable even if its next tier now requires a deeper sector.
 
 ## Original artwork
 
@@ -66,7 +70,7 @@ The simulation is planar Matter.js physics with a Three.js presentation; it is n
 & 'C:/Program Files/Blender Foundation/Blender 5.0/blender.exe' --background --python art/build_assets.py
 ```
 
-The renderer combines compatible static meshes by material while preserving the chassis, blade and two wing groups for progression. Missing UV attributes are normalized so the procedural plow plate cannot disappear during batching. The plow is a closed, thick, concave solid with end caps. A separate Blender-authored shoe is instanced along both track loops. The front magnet and conveyors are code-authored meshes in src/equipment.ts and reused for holographic previews. Both visual and physical dimensions come from `src/progression.ts`.
+The renderer combines compatible static meshes by material while preserving the chassis, blade and two wing groups for progression. Missing UV attributes are normalized so the procedural plow plate cannot disappear during batching. The plow is a closed, thick, concave solid with end caps. A separate Blender-authored shoe is instanced along both track loops. The front magnet, refinery and conveyors are code-authored meshes in src/equipment.ts and reused for holographic previews. Both visual and physical dimensions come from `src/progression.ts`.
 
 ## Verification and design
 
@@ -76,6 +80,7 @@ npm run build
 # With the dev server running on port 5173 and Microsoft Edge installed:
 node tools/browser-check.mjs
 node tools/machinery-check.mjs
+node tools/polish-check.mjs
 node tools/performance-check.mjs current
 ```
 

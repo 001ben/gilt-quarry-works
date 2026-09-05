@@ -6,6 +6,7 @@ import {
   PADS,
   PadId,
   padCost,
+  gatePadFinished,
   gateCost,
   GATES,
   Progress,
@@ -29,9 +30,10 @@ export type GameEvent =
   | { type: "collect"; x: number; y: number; value: number; color: number }
   | { type: "notice"; text: string }
   | { type: "upgrade"; kind: string }
+  | { type: "fund"; pad: PadId; value: number; ratio: number }
   | { type: "victory" };
 export interface SaveData {
-  version: 3;
+  version: 4;
   completedPad?: PadId;
   progress: Progress;
   machine: { x: number; y: number; angle: number };
@@ -45,7 +47,7 @@ export function parseSave(raw: string | null): SaveData | null {
       },
       p = s.progress;
     if (
-      (s.version !== 1 && s.version !== 2 && s.version !== 3) ||
+      ![1, 2, 3, 4].includes(s.version) ||
       !p ||
       !p.levels ||
       !s.machine ||
@@ -77,10 +79,17 @@ export function parseSave(raw: string | null): SaveData | null {
       p.levels.magnet = 0;
       p.funding = emptyFunding();
     }
+    if (s.version < 4 && p.funding) {
+      p.levels.refinery = 0;
+      p.funding.refinery = 0;
+    }
     if (
       !Number.isInteger(p.levels.magnet) ||
       p.levels.magnet < 0 ||
       p.levels.magnet > 5 ||
+      !Number.isInteger(p.levels.refinery) ||
+      p.levels.refinery < 0 ||
+      p.levels.refinery > 3 ||
       !p.funding ||
       !PADS.every(
         ({ id }) =>
@@ -150,13 +159,13 @@ export function parseSave(raw: string | null): SaveData | null {
         (g) => skipped[g.sector]++ >= progress.collected[g.sector],
       );
       return {
-        version: 3,
+        version: 4,
         progress,
         machine: s.machine,
         gems: gems.map(({ id, x, y, angle }) => ({ id, x, y, angle })),
       };
     }
-    return { ...s, version: 3 };
+    return { ...s, version: 4 };
   } catch {
     return null;
   }
@@ -431,13 +440,14 @@ export class Simulation {
     if (!this.gems.delete(gem.id)) return;
     Composite.remove(this.engine.world, gem.body);
     const p = this.progress;
-    p.money += gem.value;
-    p.earned += gem.value;
+    const value = gem.value + stats(p).gemBonus;
+    p.money += value;
+    p.earned += value;
     p.collected[gem.sector]++;
     this.events.push({
       type: "collect",
       ...gem.body.position,
-      value: gem.value,
+      value,
       color: SECTORS[gem.sector].color,
     });
     const sector = SECTORS[gem.sector];
@@ -458,6 +468,7 @@ export class Simulation {
   private fundPlatform() {
     const pad = PADS.find(
       (p) =>
+        !gatePadFinished(this.progress, p.id) &&
         Math.abs(this.position.x - p.x) < 47 &&
         Math.abs(this.position.y - p.y) < 47,
     );
@@ -478,6 +489,13 @@ export class Simulation {
       );
       this.progress.money -= amount;
       this.progress.funding[pad.id] += amount;
+      if (amount > 0)
+        this.events.push({
+          type: "fund",
+          pad: pad.id,
+          value: amount,
+          ratio: this.progress.funding[pad.id] / cost,
+        });
     }
     if (this.progress.funding[pad.id] >= cost) {
       this.progress.money += this.progress.funding[pad.id];
@@ -488,9 +506,7 @@ export class Simulation {
   }
   purchase(kind: Upgrade | "gate"): boolean {
     const cost =
-      kind === "gate"
-        ? gateCost(this.progress)
-        : upgradeCost(this.progress, kind);
+      kind === "gate" ? gateCost(this.progress) : padCost(this.progress, kind);
     if (cost === null || this.progress.money < cost) return false;
     this.progress.money -= cost;
     if (kind === "gate") {
@@ -498,14 +514,14 @@ export class Simulation {
       this.rebuildGates();
     } else {
       this.progress.levels[kind]++;
-      if (kind !== "intake") this.rebuildDozer();
+      if (kind === "engine" || kind === "blade") this.rebuildDozer();
     }
     this.events.push({ type: "upgrade", kind });
     return true;
   }
   snapshot(): SaveData {
     return {
-      version: 3,
+      version: 4,
       completedPad: this.padCompleted
         ? (this.activePad ?? undefined)
         : undefined,

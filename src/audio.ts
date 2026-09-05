@@ -55,6 +55,10 @@ export class GameAudio {
     this.lastCoin = performance.now();
     this.tone(650 + Math.random() * 150, 0.13);
   }
+  payment(ratio: number) {
+    this.tone(280 + ratio * 400, 0.09);
+    this.tone(420 + ratio * 500, 0.08, 0.055);
+  }
   upgrade() {
     [440, 554, 659, 880].forEach((f, i) => this.tone(f, 0.22, i * 0.075));
   }

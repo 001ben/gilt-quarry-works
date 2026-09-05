@@ -1,18 +1,27 @@
-export type Upgrade = "engine" | "blade" | "intake" | "magnet";
+export type Upgrade = "engine" | "blade" | "intake" | "magnet" | "refinery";
+export const UPGRADE_MAX: Record<Upgrade, number> = {
+  engine: 5,
+  blade: 5,
+  intake: 5,
+  magnet: 5,
+  refinery: 3,
+};
 export type PadId = Upgrade | "gate1" | "gate2";
 export const PADS: { id: PadId; name: string; x: number; y: number }[] = [
   { id: "engine", name: "ENGINE", x: -350, y: 40 },
-  { id: "blade", name: "PLOW", x: -350, y: -250 },
+  { id: "blade", name: "PLOW", x: -350, y: -95 },
   { id: "intake", name: "CONVEYOR", x: 350, y: 40 },
-  { id: "magnet", name: "MAGNET", x: 350, y: -250 },
-  { id: "gate1", name: "CITRINE KEY", x: 0, y: -345 },
-  { id: "gate2", name: "AMETHYST KEY", x: 0, y: -915 },
+  { id: "magnet", name: "MAGNET", x: 350, y: -535 },
+  { id: "gate1", name: "CITRINE KEY", x: 335, y: -345 },
+  { id: "gate2", name: "AMETHYST KEY", x: 335, y: -915 },
+  { id: "refinery", name: "REFINERY", x: -350, y: -1090 },
 ];
 export const emptyFunding = (): Record<PadId, number> => ({
   engine: 0,
   blade: 0,
   intake: 0,
   magnet: 0,
+  refinery: 0,
   gate1: 0,
   gate2: 0,
 });
@@ -68,7 +77,7 @@ export function freshProgress(): Progress {
   return {
     money: 0,
     earned: 0,
-    levels: { engine: 1, blade: 1, intake: 1, magnet: 0 },
+    levels: { engine: 1, blade: 1, intake: 1, magnet: 0, refinery: 0 },
     funding: emptyFunding(),
     sector: 1,
     collected: [0, 0, 0],
@@ -78,7 +87,8 @@ export function freshProgress(): Progress {
   };
 }
 export function upgradeCost(p: Progress, kind: Upgrade): number | null {
-  return p.levels[kind] >= 5
+  if (kind === "refinery") return [450, 900, 1800][p.levels.refinery] ?? null;
+  return p.levels[kind] >= UPGRADE_MAX[kind]
     ? null
     : Math.round(
         { engine: 90, blade: 100, intake: 120, magnet: 85 }[kind] *
@@ -103,24 +113,55 @@ export function stats(p: Progress) {
     feederLength: Math.max(0, p.levels.intake - 2) * 110,
     magnetRange: p.levels.magnet ? 55 + p.levels.magnet * 24 : 0,
     magnetStrength: p.levels.magnet * 0.045,
+    gemBonus: p.levels.refinery,
   };
 }
 export function padCost(p: Progress, id: PadId): number | null {
+  if (padLockedSector(p, id) !== null) return null;
   if (id === "gate1" || id === "gate2") {
     return p.sector === (id === "gate1" ? 1 : 2) ? gateCost(p) : null;
   }
   return upgradeCost(p, id);
 }
-export function padDetail(p: Progress, id: PadId): string {
+export function padLockedSector(p: Progress, id: PadId): number | null {
+  if (id !== "gate1" && id !== "gate2" && p.levels[id] >= UPGRADE_MAX[id])
+    return null;
+  let required: number;
+  if (id === "gate1") required = 1;
+  else if (id === "gate2") required = 2;
+  else if (id === "refinery") required = 3;
+  else {
+    const next = p.levels[id] + 1;
+    required =
+      id === "magnet"
+        ? next <= 3
+          ? 2
+          : 3
+        : next <= 3
+          ? 1
+          : next === 4
+            ? 2
+            : 3;
+  }
+  return p.sector < required ? required : null;
+}
+export function gatePadFinished(p: Progress, id: PadId) {
+  return (id === "gate1" && p.sector > 1) || (id === "gate2" && p.sector > 2);
+}
+export function padDetail(p: Progress, id: PadId, installed = false): string {
   if (id === "gate1" || id === "gate2")
     return "Open richer ground · free after clearing the sector";
   const next = structuredClone(p);
-  next.levels[id] = Math.min(5, next.levels[id] + 1);
+  next.levels[id] = Math.min(
+    UPGRADE_MAX[id],
+    next.levels[id] + (installed ? 0 : 1),
+  );
   const s = stats(next);
   return {
     engine: `Level ${next.levels.engine} · more power & a larger chassis`,
     blade: `${s.bladeWidth.toFixed(1)} m plow${s.wings ? " with retaining wings" : " working width"}`,
     intake: `${(s.intakeWidth / 30).toFixed(0)} m belt · ${(s.feederLength / 30).toFixed(0)} m feeder`,
     magnet: `Level ${next.levels.magnet} · ${(s.magnetRange / 30).toFixed(1)} m magnetic reach`,
+    refinery: `Level ${next.levels.refinery} · +$${s.gemBonus} for every gem sold`,
   }[id];
 }

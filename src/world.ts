@@ -1,6 +1,11 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-import { createConveyor, animateConveyor, createMagnet } from "./equipment";
+import {
+  createConveyor,
+  animateConveyor,
+  createMagnet,
+  createRefinery,
+} from "./equipment";
 import { UpgradePlatforms } from "./platforms";
 import { bakeModelPart } from "./model";
 import { sampleTrack, TRACK_LENGTH, TRACK_LINK_COUNT } from "./tracks";
@@ -366,6 +371,11 @@ export class QuarryView {
       s.feederLength / UNIT,
     );
     this.intake.add(belt.group);
+    if (this.sim.progress.levels.refinery > 0) {
+      const refinery = createRefinery(this.sim.progress.levels.refinery);
+      refinery.position.z = 2.2;
+      this.intake.add(refinery);
+    }
     this.belts = belt.slats;
     this.intake.position.set(0, 0, COLLECTOR.y / UNIT);
     this.scene.add(this.intake);
@@ -446,6 +456,9 @@ export class QuarryView {
       g.visible = t < 1;
     });
     animateConveyor(this.belts, time);
+    this.intake.getObjectByName("Refinery")?.children.forEach((drum) => {
+      if (drum.name === "PolishingDrum") drum.rotation.y = time * 2;
+    });
     this.platforms?.render(this.sim, time);
     this.magnet.visible = this.sim.progress.levels.magnet > 0;
     this.field.visible = this.magnet.visible;

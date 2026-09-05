@@ -127,3 +127,28 @@ export function createKey() {
   block(group, 0.17, -0.28, 0, 0.35, 0.14, 0.18, 0xe16052);
   return group;
 }
+
+export function createRefinery(level = 1) {
+  const group = new THREE.Group();
+  group.name = "Refinery";
+  block(group, 0, 0.25, 0, 2.7, 0.5, 1.25, 0x304f43);
+  block(group, 0, 0.95, -0.45, 2.7, 1.3, 0.16, 0xf4ba49);
+  block(group, 0, 1.65, -0.4, 2.95, 0.12, 0.45, 0xf4e7c9);
+  for (let i = 0; i < level; i++) {
+    const roller = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.28, 0.28, 0.75, 12),
+      paint(0xa7d4cb),
+    );
+    roller.name = "PolishingDrum";
+    roller.rotation.x = Math.PI / 2;
+    roller.position.set((i - (level - 1) / 2) * 0.8, 1, 0);
+    const band = new THREE.Mesh(
+      new THREE.BoxGeometry(0.08, 0.7, 0.025),
+      paint(0xffd470),
+    );
+    band.position.z = 0.282;
+    roller.add(band);
+    group.add(roller);
+  }
+  return group;
+}

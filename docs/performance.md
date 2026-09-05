@@ -42,3 +42,10 @@ Correctness checks:
     node tools/browser-check.mjs
 
 Twenty-two tests pass, including the new collision equivalence and idle-sleep tests. Desktop and mobile browser regression checks pass with no page errors. Physical mobile hardware and the user's exact accumulated pile are still separate measurements.
+
+
+## Progression polish follow-up
+
+The same fixture with expanded platforms, overhead bars and the later-sector refinery preview measures 6.8 ms median / 12.3 ms p95 for the 600-gem conveyor pile (347 draws). It still collects 387 gems; the driving fixture still collects 593. Parked on the conveyor without the large pile measures 3.0 / 4.2 ms. These are the same CPU work measurements, with run-to-run variation.
+
+Funding rims use one instanced batch per pad. Coin effects use at most 30 DOM nodes, batched across collections, pause with gameplay, and clean up after arrival/reset. The stress fixture isolates the simulation and renderer; the separate polish browser check verifies the coin cap and lifecycle. No gem detail or counts were reduced.

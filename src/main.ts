@@ -5,8 +5,17 @@ import "@fontsource/dm-sans/latin-400.css";
 import "@fontsource/dm-sans/latin-600.css";
 import "@fontsource/dm-sans/latin-700.css";
 import "./style.css";
+import { CoinEffects } from "./coin-effects";
 import { GameAudio } from "./audio";
-import { PADS, padCost, padDetail, SECTORS, TOTAL_GEMS } from "./progression";
+import {
+  PADS,
+  padCost,
+  padDetail,
+  padLockedSector,
+  stats,
+  SECTORS,
+  TOTAL_GEMS,
+} from "./progression";
 import { parseSave, Simulation } from "./simulation";
 import { QuarryView } from "./world";
 
@@ -70,6 +79,7 @@ let last = performance.now(),
 let pendingPayout = { value: 0, x: 0, y: 0 },
   lastPayout = 0;
 const dialog = $<HTMLDialogElement>("panel");
+const coins = new CoinEffects(app, $("money"));
 const money = (v: number) => "$" + Math.floor(v).toLocaleString("en-US");
 function toast(text: string) {
   $("toast").textContent = text;
@@ -101,7 +111,7 @@ function updateHud() {
   $("money").textContent = money(p.money);
   $("location").textContent = `0${sector + 1} / ${zone.name.toUpperCase()}`;
   $("mineral").textContent = zone.mineral.toUpperCase();
-  $("gem-value").textContent = `$${zone.value} / GEM`;
+  $("gem-value").textContent = `$${zone.value + stats(p).gemBonus} / GEM`;
   $("contract-number").textContent = `0${sector + 1}—03`;
   $("contract-title").textContent = p.victory
     ? "A quarry well cleared."
@@ -136,23 +146,39 @@ function updateHud() {
     const cost = padCost(p, pad.id),
       paid = p.funding[pad.id];
     const onPad = sim.activePad === pad.id;
-    $("pad-status").textContent = onPad
-      ? cost === null || sim.padCompleted
-        ? "FITTED - DRIVE OFF TO CONTINUE"
-        : p.money
-          ? "FUNDING - STAY ON THE PLATFORM"
-          : "FUNDING SAVED - BRING MORE GEMS"
-      : "NEAREST UPGRADE PLATFORM";
+    const fitted = onPad && sim.padCompleted;
+    const locked = fitted ? null : padLockedSector(p, pad.id);
+    $("pad-status").textContent =
+      locked !== null
+        ? "OPEN SECTOR 0" + locked + " TO UPGRADE"
+        : onPad
+          ? cost === null || sim.padCompleted
+            ? "FITTED - DRIVE OFF TO CONTINUE"
+            : p.money
+              ? "FUNDING - STAY ON THE PLATFORM"
+              : "FUNDING SAVED - BRING MORE GEMS"
+          : "NEAREST UPGRADE PLATFORM";
     $("pad-name").textContent = pad.name;
-    $("pad-detail").textContent = padDetail(p, pad.id);
-    $("pad-paid").textContent =
-      cost === null
-        ? "Complete"
-        : cost === 0
-          ? "Free unlock"
-          : money(paid) + " / " + money(cost);
+    $("pad-detail").textContent = padDetail(p, pad.id, fitted);
+    $("pad-paid").textContent = fitted
+      ? "Upgrade installed"
+      : locked !== null
+        ? "Funding held: " + money(paid)
+        : cost === null
+          ? "Complete"
+          : cost === 0
+            ? "Free unlock"
+            : money(paid) + " / " + money(cost);
     $("pad-fill").style.width =
-      (cost === null ? 100 : cost ? (paid / cost) * 100 : 0) + "%";
+      (fitted
+        ? 100
+        : locked !== null
+          ? 0
+          : cost === null
+            ? 100
+            : cost
+              ? (paid / cost) * 100
+              : 0) + "%";
     const dx = pad.x - sim.position.x,
       dy = pad.y - sim.position.y;
     $("pad-distance").textContent = onPad
@@ -168,16 +194,15 @@ function updateHud() {
             : "NORTH");
     $("pad-guide").classList.toggle("funding", onPad);
   }
-  $("tip").textContent =
-    p.collected.reduce((a, b) => a + b, 0) === 0
-      ? "Hold W to push the first heap onto the deposit."
-      : sim.padCompleted
-        ? "Upgrade fitted. Drive off and return for the next level."
-        : sim.activePad
-          ? "Brake to stay on the pad. Partial payments are saved."
-          : sector > 0
-            ? "Bring your haul south to the deposit."
-            : "Park on a glowing platform to build your next upgrade.";
+  $("tip").textContent = sim.padCompleted
+    ? "Upgrade fitted. Drive off and return for the next level."
+    : sim.activePad
+      ? "Brake to stay on the pad. Partial payments are saved."
+      : sector > 0
+        ? "Bring your haul south to the deposit."
+        : p.collected[0] === 0
+          ? "Hold W to push the first heap onto the deposit."
+          : "Park on a glowing platform to build your next upgrade.";
 }
 function closePanel() {
   dialog.close();
@@ -202,7 +227,7 @@ function openPanel(kind: NonNullable<typeof modal>) {
         "A good day’s work.",
         "The blade does the gathering. The deposit does the selling.",
       ) +
-      `<div class="instructions"><p><b>01 / Sweep</b>W drives forward and S reverses without turning around. Left / right arrows steer; A / D also work. Space brakes.</p><p><b>02 / Deliver</b>Push gems onto the striped belt near the south end. Belts pull them into the dark hopper and pay you immediately.</p><p><b>03 / Grow</b>Park on a glowing platform to fund the rotating part above it. Money transfers gradually; partial funding is saved. Drive off and return for the next level. Find the key pads beside the gates. Add a magnet to draw stragglers in front of your plow.</p><p><b>04 / Finish</b>Clear all ${TOTAL_GEMS.toLocaleString()} gems to earn a fully upgraded victory lap. Every sector awards a halfway bonus.</p></div><div class="shortcut-list">C · camera &nbsp; / &nbsp; Scroll · zoom &nbsp; / &nbsp; M · sound &nbsp; / &nbsp; Esc · pause</div><p class="panel-note">Progress saves on this browser. On touch screens, use the directional pad.</p><button class="primary resume">Back to the quarry →</button>`;
+      `<div class="instructions"><p><b>01 / Sweep</b>W drives forward and S reverses without turning around. Left / right arrows steer; A / D also work. Space brakes.</p><p><b>02 / Deliver</b>Push gems onto the striped belt near the south end. Belts pull them into the dark hopper and pay you immediately.</p><p><b>03 / Grow</b>Park on a glowing platform to fund the rotating part above it. Money transfers gradually; partial funding is saved. Drive off and return for the next level. Find the key pads beside the gates. Find the magnet in Citrine Cut to gather stragglers, and the refinery in Amethyst Reach to increase every gem’s sale value. Opening sectors also unlocks stronger engine, plow and conveyor tiers.</p><p><b>04 / Finish</b>Clear all ${TOTAL_GEMS.toLocaleString()} gems to earn a fully upgraded victory lap. Every sector awards a halfway bonus.</p></div><div class="shortcut-list">C · camera &nbsp; / &nbsp; Scroll · zoom &nbsp; / &nbsp; M · sound &nbsp; / &nbsp; Esc · pause</div><p class="panel-note">Progress saves on this browser. On touch screens, use the directional pad.</p><button class="primary resume">Back to the quarry →</button>`;
   } else if (kind === "victory") {
     $("panel-content").innerHTML =
       header(
@@ -210,7 +235,7 @@ function openPanel(kind: NonNullable<typeof modal>) {
         "You moved mountains.",
         `All three sectors cleared. ${money(sim.progress.earned)} earned. Time to enjoy what you built.`,
       ) +
-      `<div class="victory-gem">◇</div><button class="primary" id="victory-lap">Take a victory lap →</button><p class="panel-note">A fresh quarry with every gate open and all equipment at level five.</p><button class="text-button resume">Stay in my finished quarry</button>`;
+      `<div class="victory-gem">◇</div><button class="primary" id="victory-lap">Take a victory lap →</button><p class="panel-note">A fresh quarry with every gate open and all equipment fully upgraded.</p><button class="text-button resume">Stay in my finished quarry</button>`;
   } else if (kind === "reset") {
     $("panel-content").innerHTML =
       header(
@@ -240,9 +265,16 @@ function openPanel(kind: NonNullable<typeof modal>) {
 }
 function newShift(sandbox: boolean) {
   pendingPayout.value = 0;
+  coins.clear();
   sim = new Simulation();
   if (sandbox) {
-    sim.progress.levels = { engine: 5, blade: 5, intake: 5, magnet: 5 };
+    sim.progress.levels = {
+      engine: 5,
+      blade: 5,
+      intake: 5,
+      magnet: 5,
+      refinery: 3,
+    };
     sim.progress.sector = 3;
     sim.progress.sandbox = true;
     sim.rebuildDozer();
@@ -384,31 +416,6 @@ for (const button of document.querySelectorAll<HTMLButtonElement>(
   button.addEventListener("pointercancel", release);
   button.addEventListener("lostpointercapture", release);
 }
-function coinEffect(x: number, y: number, value: number) {
-  const pos = view.project(x, y),
-    coin = document.createElement("span");
-  coin.className = "flying-coin";
-  coin.textContent = `+$${value}`;
-  coin.style.left = pos.x + "px";
-  coin.style.top = pos.y + "px";
-  app.append(coin);
-  const target = $("money").getBoundingClientRect();
-  coin.animate(
-    [
-      { transform: "translate(-50%,0) scale(1)", opacity: 1 },
-      {
-        transform: "translate(-50%,-30px) scale(1.2)",
-        opacity: 1,
-        offset: 0.3,
-      },
-      {
-        transform: `translate(${target.x - pos.x}px,${target.y - pos.y}px) scale(.5)`,
-        opacity: 0,
-      },
-    ],
-    { duration: 850, easing: "cubic-bezier(.2,.65,.4,1)" },
-  ).onfinish = () => coin.remove();
-}
 function frame(now: number) {
   const dt = Math.min((now - last) / 1000, 0.08);
   last = now;
@@ -429,6 +436,7 @@ function frame(now: number) {
       accumulator -= 1 / 60;
     }
   } else accumulator = 0;
+  coins.setPaused(paused);
   let collectedValue = 0,
     collectedX = 0,
     collectedY = 0;
@@ -438,6 +446,15 @@ function frame(now: number) {
       collectedValue += event.value;
       collectedX = event.x;
       collectedY = event.y;
+    }
+    if (event.type === "fund") {
+      const pad = PADS.find((p) => p.id === event.pad)!;
+      coins.transfer(
+        view.project(pad.x, pad.y + 65, 0.4),
+        event.value,
+        false,
+        () => audio.payment(event.ratio),
+      );
     }
     if (event.type === "notice") toast(event.text);
     if (event.type === "upgrade") {
@@ -460,9 +477,13 @@ function frame(now: number) {
     pendingPayout.x = collectedX;
     pendingPayout.y = collectedY;
   }
-  if (pendingPayout.value > 0 && now - lastPayout >= 120) {
-    coinEffect(pendingPayout.x, pendingPayout.y, pendingPayout.value);
-    audio.coin();
+  if (!paused && pendingPayout.value > 0 && now - lastPayout >= 120) {
+    coins.transfer(
+      view.project(pendingPayout.x, pendingPayout.y),
+      pendingPayout.value,
+      true,
+      () => audio.coin(),
+    );
     pendingPayout.value = 0;
     lastPayout = now;
   }

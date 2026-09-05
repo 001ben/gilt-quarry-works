@@ -39,7 +39,7 @@ await page.keyboard.press("Escape");
 const before = JSON.parse(
   await page.evaluate(() => localStorage.getItem("gilt-quarry-v1")),
 );
-assert.equal(before.version, 3);
+assert.equal(before.version, 4);
 assert.equal(
   before.gems.length,
   6300 - before.progress.collected.reduce((a, b) => a + b, 0),
@@ -118,6 +118,7 @@ const lap = JSON.parse(
   await victory.evaluate(() => localStorage.getItem("gilt-quarry-v1")),
 );
 assert.equal(lap.progress.levels.magnet, 5);
+assert.equal(lap.progress.levels.refinery, 3);
 assert.equal(lap.progress.levels.engine, 5);
 assert.equal(lap.progress.sector, 3);
 await victory.locator(".resume").click();
@@ -149,6 +150,9 @@ await upgrade.keyboard.up("w");
 await upgrade.keyboard.down("Space");
 await upgrade.waitForTimeout(1200);
 assert.match(await upgrade.locator("#pad-status").innerText(), /FUNDING/);
+await upgrade.waitForFunction(
+  () => document.querySelectorAll(".flying-coin.payment").length > 0,
+);
 await upgrade.screenshot({ path: ".local/platform-funding.png" });
 await upgrade.waitForTimeout(4500);
 assert.match(await upgrade.locator("#pad-status").innerText(), /FITTED/);
