@@ -49,7 +49,7 @@ Touch devices have forward, reverse, steering and brake buttons. Start your shif
 - Two continuous 40-link track chains follow measured ground travel, reverse direction, and counter-rotate during pivot turns.
 - Five engine/chassis levels, five blade widths (with wings from level three), five working collector configurations, an optional five-level front magnet, and a three-level gem refinery.
 - Conveyors animate toward the hopper and grow from a 3 m span to 28 m, with an 11 m forward feeder at maximum level.
-- A front boom magnet starts with a slow pull on small stones, then gains range and strength. Ground pulses show its reach.
+- A front boom magnet starts with a slow pull on small stones, then gains range and strength. It gathers loose stones across the blade and lets packed loads settle. Ground pulses show its reach.
 - Engine and plow pads sit together in Quartz Flats; the conveyor stays opposite. Magnet upgrades live in Citrine Cut, and the refinery in Amethyst Reach. Quartz offers equipment through level 3; Citrine unlocks level 4 and magnet levels 1–3; Amethyst opens the final tiers.
 - The refinery adds $1 per gem at each of its three levels, costs $450 / $900 / $1,800, and adds animated polishing drums behind the hopper.
 - Occupied pads expand, fill with color and light around their perimeter, and lift the rotating part plus an overhead progress bar above the dozer.
@@ -82,9 +82,10 @@ node tools/browser-check.mjs
 node tools/machinery-check.mjs
 node tools/polish-check.mjs
 node tools/performance-check.mjs current
+node tools/late-game-check.mjs current
 ```
 
-See [conveyor performance measurements](docs/performance.md), [design and source study](docs/design.md) and [verification results](docs/verification.md). The original repository lives only in an ignored local `.reference` folder during development; none of its code or assets are shipped here.
+See [late-game pushing measurements](docs/late-game-performance.md), [conveyor performance measurements](docs/performance.md), [design and source study](docs/design.md) and [verification results](docs/verification.md). The original repository lives only in an ignored local `.reference` folder during development; none of its code or assets are shipped here.
 
 ## Project map
 

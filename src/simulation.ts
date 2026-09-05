@@ -176,7 +176,7 @@ export class Simulation {
     enableSleeping: true,
     gravity: { x: 0, y: 0 },
     positionIterations: 8,
-    velocityIterations: 8,
+    velocityIterations: 4,
   });
   progress: Progress;
   gems = new Map<number, Gem>();
@@ -319,6 +319,12 @@ export class Simulation {
     const s = stats(this.progress),
       b = this.dozer;
     const previous = { ...this.position, angle: b.angle };
+    const previousBounds = {
+      minX: b.bounds.min.x,
+      maxX: b.bounds.max.x,
+      minY: b.bounds.min.y,
+      maxY: b.bounds.max.y,
+    };
     if (input.throttle || input.steer) Sleeping.set(b, false);
     if (!input.brake) {
       const yaw = Math.max(-1, Math.min(1, input.steer)) * 0.035;
@@ -360,42 +366,109 @@ export class Simulation {
         if (this.gateOpening[i] === 1) this.rebuildGates();
       }
     }
+    // Cover the previous and current machine footprint, with room for the next
+    // step and a few rows of stones. Reverse and pivot turns wake their contact area too.
+    const wakeMargin = 32 + s.maxSpeed;
+    const wake = {
+      minX: Math.min(previousBounds.minX, b.bounds.min.x) - wakeMargin,
+      maxX: Math.max(previousBounds.maxX, b.bounds.max.x) + wakeMargin,
+      minY: Math.min(previousBounds.minY, b.bounds.min.y) - wakeMargin,
+      maxY: Math.max(previousBounds.maxY, b.bounds.max.y) + wakeMargin,
+    };
+    const moving = Boolean(
+      (!input.brake && (input.throttle || input.steer)) || b.speed > 0.05,
+    );
+    const captureAhead = 2.65 * UNIT * s.scale;
+    const captureHalfWidth = (s.bladeWidth * UNIT) / 2 - 12;
+    // A small local grid lets the magnet distinguish loose stones from packed ore.
+    // Surrounded stones already belong to a load; repeatedly pulling them only jams it.
+    const nearby = new Map<number, Gem[]>();
+    const cellKey = (x: number, y: number) => x + y * 1024;
+    if (s.magnetRange) {
+      const reach = s.magnetRange + 12;
+      for (const gem of this.gems.values()) {
+        const p = gem.body.position;
+        if (
+          Math.abs(p.x - magnet.x) > reach ||
+          Math.abs(p.y - magnet.y) > reach
+        )
+          continue;
+        const key = cellKey(Math.floor(p.x / 16), Math.floor(p.y / 16));
+        const cell = nearby.get(key);
+        if (cell) cell.push(gem);
+        else nearby.set(key, [gem]);
+      }
+    }
+    const surrounded = (gem: Gem) => {
+      const p = gem.body.position,
+        cx = Math.floor(p.x / 16),
+        cy = Math.floor(p.y / 16);
+      let neighbors = 0;
+      for (let y = cy - 1; y <= cy + 1; y++)
+        for (let x = cx - 1; x <= cx + 1; x++)
+          for (const other of nearby.get(cellKey(x, y)) ?? []) {
+            if (other === gem) continue;
+            const q = other.body.position;
+            if (
+              (p.x - q.x) ** 2 + (p.y - q.y) ** 2 < 12 ** 2 &&
+              ++neighbors >= 3
+            )
+              return true;
+          }
+      return false;
+    };
     for (const gem of this.gems.values()) {
       const p = gem.body.position;
-      // Wake an approaching heap before contact: a slow blade otherwise treats sleeping
-      // stones as immovable until it exceeds Matter's collision-wake threshold.
+      // Slow contact needs explicit waking; distant parts of a heap can stay asleep.
       if (
         gem.body.isSleeping &&
-        (input.throttle || input.steer || b.speed > 0.05) &&
-        (p.x - this.position.x) ** 2 + (p.y - this.position.y) ** 2 < 260 ** 2
+        moving &&
+        p.x > wake.minX &&
+        p.x < wake.maxX &&
+        p.y > wake.minY &&
+        p.y < wake.maxY
       ) {
         Sleeping.set(gem.body, false);
       }
       if (s.magnetRange) {
-        const dx = magnet.x - p.x,
-          dy = magnet.y - p.y;
-        const distance = Math.hypot(dx, dy);
-        const ahead =
-          (p.x - this.position.x) * forward.x +
-          (p.y - this.position.y) * forward.y;
-        const sameSector = !GATES.some(
-          (y, i) =>
-            this.gateOpening[i] < 1 && (p.y - y) * (this.position.y - y) < 0,
-        );
+        const mx = magnet.x - p.x,
+          my = magnet.y - p.y;
+        const rangeSquared = mx * mx + my * my;
+        const relativeX = p.x - this.position.x,
+          relativeY = p.y - this.position.y;
+        const ahead = relativeX * forward.x + relativeY * forward.y;
+        const gap = ahead - captureAhead;
         if (
-          s.magnetRange &&
-          distance < s.magnetRange &&
-          distance > 4 &&
-          ahead > 2.3 * UNIT * s.scale &&
-          sameSector &&
-          gem.radius <= 3.35 + this.progress.levels.magnet * 0.08
+          rangeSquared < s.magnetRange ** 2 &&
+          gap > 6 &&
+          !surrounded(gem) &&
+          gem.radius <= 3.35 + this.progress.levels.magnet * 0.08 &&
+          !GATES.some(
+            (y, i) =>
+              this.gateOpening[i] < 1 && (p.y - y) * (this.position.y - y) < 0,
+          )
         ) {
-          Sleeping.set(gem.body, false);
+          // Preserve each stone's lateral position inside a strip across the plow.
+          // Only outlying stones steer inward; captured stones receive no more pull.
+          const side = relativeX * -forward.y + relativeY * forward.x;
+          const targetSide = Math.max(
+            -captureHalfWidth,
+            Math.min(captureHalfWidth, side),
+          );
+          const sideways = targetSide - side;
+          const distance = Math.hypot(sideways, gap);
           const pull =
-            s.magnetStrength * (1 - (distance / s.magnetRange) * 0.65);
+            s.magnetStrength *
+            (1 - (Math.sqrt(rangeSquared) / s.magnetRange) * 0.65) *
+            Math.min(1, gap / 28);
+          if (gem.body.isSleeping) Sleeping.set(gem.body, false);
           Body.setVelocity(gem.body, {
-            x: gem.body.velocity.x + (dx / distance) * pull,
-            y: gem.body.velocity.y + (dy / distance) * pull,
+            x:
+              gem.body.velocity.x +
+              ((-forward.y * sideways - forward.x * gap) / distance) * pull,
+            y:
+              gem.body.velocity.y +
+              ((forward.x * sideways - forward.y * gap) / distance) * pull,
           });
         }
       }

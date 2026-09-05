@@ -66,3 +66,83 @@ test("parking does not repeatedly wake untouched heaps", () => {
   assert.equal(gem.body.isSleeping, true);
   assert.ok(sim.engine.detector.bodies.length < 30);
 });
+
+test("driving wakes contact stones without waking distant gems beside or behind the dozer", () => {
+  for (const angle of [0, Math.PI / 2, Math.PI]) {
+    const sim = new Simulation();
+    const [near, side, behind] = [...sim.gems.values()];
+    for (const gem of [...sim.gems.values()].slice(3)) {
+      Matter.Composite.remove(sim.engine.world, gem.body);
+      sim.gems.delete(gem.id);
+    }
+    sim.teleport(0, -700, angle);
+    const place = (gem: typeof near, x: number, y: number) =>
+      Matter.Body.setPosition(gem.body, {
+        x: x * Math.cos(angle) - y * Math.sin(angle),
+        y: -700 + x * Math.sin(angle) + y * Math.cos(angle),
+      });
+    place(near, 0, -88);
+    place(side, 200, 0);
+    place(behind, 0, 200);
+    sim.update({ throttle: 1, steer: 0, brake: false });
+    assert.equal(near.body.isSleeping, false);
+    assert.equal(side.body.isSleeping, true);
+    assert.equal(behind.body.isSleeping, true);
+  }
+});
+
+test("maximum plow contains a 300-stone compressed load against a barrier", () => {
+  const sim = new Simulation();
+  sim.progress.levels = {
+    engine: 5,
+    blade: 5,
+    intake: 5,
+    magnet: 5,
+    refinery: 3,
+  };
+  sim.rebuildDozer();
+  sim.teleport(0, 0, 0);
+  let i = 0;
+  for (const gem of [...sim.gems.values()]) {
+    if (i >= 300) {
+      Matter.Composite.remove(sim.engine.world, gem.body);
+      sim.gems.delete(gem.id);
+      continue;
+    }
+    Matter.Body.setPosition(gem.body, {
+      x: ((i % 20) - 9.5) * 8.2,
+      y: -135 - Math.floor(i / 20) * 7.15,
+    });
+    i++;
+  }
+  Matter.Composite.add(
+    sim.engine.world,
+    Matter.Bodies.rectangle(0, -270, 900, 16, { isStatic: true }),
+  );
+  let maximumOverlap = 0;
+  for (let frame = 0; frame < 240; frame++) {
+    sim.update({
+      throttle: frame < 180 ? 1 : 0,
+      steer: 0,
+      brake: frame >= 180,
+    });
+    for (const gem of sim.gems.values()) {
+      const x = gem.body.position.x - sim.position.x,
+        y = gem.body.position.y - sim.position.y;
+      assert.ok(
+        Math.abs(x) >= 90 || y <= -75,
+        "a central stone cannot pass through the plow",
+      );
+      assert.ok(gem.body.position.y >= -280, "stones cannot cross the barrier");
+      for (const part of sim.dozer.parts.slice(1)) {
+        const collision = Matter.Collision.collides(part, gem.body);
+        if (collision)
+          maximumOverlap = Math.max(maximumOverlap, collision.depth);
+      }
+    }
+  }
+  assert.ok(
+    maximumOverlap < 3.1,
+    "residual contact overlap stays below the smallest stone radius",
+  );
+});

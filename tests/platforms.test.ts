@@ -202,3 +202,40 @@ test("version two saves gain an unfitted magnet and empty platform funding", () 
   restored.progress.funding.engine = -1;
   assert.equal(parseSave(JSON.stringify(restored)), null);
 });
+
+test("magnet keeps loose gems spread across the blade and lets captured stones sleep", () => {
+  const sim = new Simulation();
+  const [left, right, captured] = isolate(sim, 3);
+  sim.progress.levels.magnet = 5;
+  sim.teleport(0, 0, 0);
+  Matter.Body.setPosition(left.body, { x: -30, y: -155 });
+  Matter.Body.setPosition(right.body, { x: 30, y: -155 });
+  Matter.Body.setPosition(captured.body, { x: 0, y: -82 });
+  step(sim, 120);
+  assert.ok(left.body.position.y > -130);
+  assert.ok(right.body.position.y > -130);
+  assert.ok(
+    left.body.position.x < -25 && right.body.position.x > 25,
+    "gems keep separate lanes instead of bunching at one point",
+  );
+  assert.equal(captured.body.isSleeping, true);
+  assert.equal(captured.body.position.y, -82);
+});
+
+test("magnet leaves packed ore sleeping but still draws a nearby straggler", () => {
+  const sim = new Simulation();
+  const gems = isolate(sim, 10);
+  sim.progress.levels.magnet = 5;
+  sim.teleport(0, 0, 0);
+  for (let i = 0; i < 9; i++)
+    Matter.Body.setPosition(gems[i].body, {
+      x: ((i % 3) - 1) * 8.2,
+      y: -170 - Math.floor(i / 3) * 8.2,
+    });
+  const loose = gems[9];
+  Matter.Body.setPosition(loose.body, { x: 80, y: -150 });
+  step(sim, 90);
+  assert.ok(gems.slice(0, 9).every((g) => g.body.isSleeping));
+  assert.ok(loose.body.position.y > -140);
+  assert.ok(loose.body.position.x < 75);
+});
