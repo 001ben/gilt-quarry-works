@@ -395,6 +395,14 @@ export class QuarryView {
     this.camera.bottom = -viewHeight / 2;
     this.camera.updateProjectionMatrix();
   }
+  headingFromScreenDrag(x: number, y: number) {
+    // Invert the camera's ground-plane projection so dragging up means up on screen.
+    const e = this.camera.matrixWorld.elements;
+    const determinant = e[0] * e[6] - e[2] * e[4];
+    const groundX = (x * e[6] + y * e[2]) / determinant;
+    const groundY = (-y * e[0] - x * e[4]) / determinant;
+    return Math.atan2(groundX, -groundY);
+  }
   project(x: number, y: number, height = 0.5) {
     const v = new THREE.Vector3(x / UNIT, height, y / UNIT).project(
       this.camera,

@@ -1212,3 +1212,30 @@ kbd {
     overflow: auto;
   }
 }
+
+#drag-stick {
+  position: fixed;
+  width: 116px;
+  height: 116px;
+  transform: translate(-50%, -50%);
+  border: 2px solid #fff0bcbb;
+  border-radius: 50%;
+  background: #254b3a44;
+  box-shadow: inset 0 0 0 16px #fff0bc11;
+  pointer-events: none;
+  z-index: 9;
+}
+#drag-stick span {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: #ffd16b;
+  border: 3px solid #fff3d7;
+  box-shadow: 0 3px 10px #233e3544;
+}
+#drag-stick.reversing span {
+  background: #f18c76;
+}

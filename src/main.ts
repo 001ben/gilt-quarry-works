@@ -5,6 +5,7 @@ import "@fontsource/dm-sans/latin-400.css";
 import "@fontsource/dm-sans/latin-600.css";
 import "@fontsource/dm-sans/latin-700.css";
 import "./style.css";
+import { DragControls } from "./drag-controls";
 import { CoinEffects } from "./coin-effects";
 import { GameAudio } from "./audio";
 import {
@@ -54,12 +55,12 @@ app.innerHTML = `
     <div class="progress-track"><span id="progress-fill"></span></div>
     <div class="contract-footer"><span id="bonus">HALFWAY BONUS</span><strong id="bonus-value">+$120</strong></div>
   </section>
-  <div class="bottom-center"><span class="direction-tip" id="tip">Hold W to push the first heap onto the deposit.</span><div class="key-guide"><kbd>W</kbd><kbd>S</kbd><span>forward / reverse</span><i></i><kbd>←</kbd><kbd>→</kbd><span>steer</span><i></i><kbd>SPACE</kbd><span>brake</span></div></div>
+  <div class="bottom-center"><span class="direction-tip" id="tip">Drag toward the deposit, or hold W to push the first heap.</span><div class="key-guide"><kbd>W</kbd><kbd>S</kbd><span>forward / reverse</span><i></i><kbd>←</kbd><kbd>→</kbd><span>steer</span><i></i><kbd>SPACE</kbd><span>brake</span></div></div>
   <aside class="pad-guide" id="pad-guide"><div class="eyebrow" id="pad-status">DRIVE-ON UPGRADES</div><strong id="pad-name">Find a glowing platform</strong><p id="pad-detail">Park on a pad to fund your next part.</p><div class="progress-track"><span id="pad-fill"></span></div><div class="pad-payment"><span id="pad-paid"></span><span id="pad-distance"></span></div></aside>
   <div id="touch-controls" aria-label="Touch driving controls"><button data-dir="up" aria-label="Drive forward">↑</button><button data-dir="left" aria-label="Steer left">←</button><button data-dir="down" aria-label="Reverse">↓</button><button data-dir="right" aria-label="Steer right">→</button><button data-dir="brake" aria-label="Brake">■</button></div>
   <div id="toast" role="status" aria-live="polite"></div>
   <div id="loading"><span class="loader"></span><strong>Opening the quarry</strong><span>Unloading your machine…</span></div>
-  <div class="welcome" id="welcome" hidden><div class="eyebrow">A LITTLE MACHINE. A LOT OF POSSIBILITY.</div><h1>Your quarry.<br>Your rules.</h1><p>Push gems. Grow your machine.<br>Turn a quiet patch of dirt into an empire.</p><button class="primary" id="start">${restored ? "Continue your shift" : "Start your shift"} <span>→</span></button><small>W / S FORWARD & REVERSE · ← / → STEER</small></div>
+  <div class="welcome" id="welcome" hidden><div class="eyebrow">A LITTLE MACHINE. A LOT OF POSSIBILITY.</div><h1>Your quarry.<br>Your rules.</h1><p>Push gems. Grow your machine.<br>Turn a quiet patch of dirt into an empire.</p><button class="primary" id="start">${restored ? "Continue your shift" : "Start your shift"} <span>→</span></button><small>DRAG TO DRIVE · W / S & ← / → ALSO WORK</small></div>
   <dialog id="panel"><div id="panel-content"></div></dialog>
 `;
 const $ = <T extends HTMLElement = HTMLElement>(id: string) =>
@@ -79,6 +80,7 @@ let last = performance.now(),
 let pendingPayout = { value: 0, x: 0, y: 0 },
   lastPayout = 0;
 const dialog = $<HTMLDialogElement>("panel");
+const drag = new DragControls(canvas, () => started && !paused);
 const coins = new CoinEffects(app, $("money"));
 const money = (v: number) => "$" + Math.floor(v).toLocaleString("en-US");
 function toast(text: string) {
@@ -201,7 +203,7 @@ function updateHud() {
       : sector > 0
         ? "Bring your haul south to the deposit."
         : p.collected[0] === 0
-          ? "Hold W to push the first heap onto the deposit."
+          ? "Drag toward the deposit, or hold W to push the first heap."
           : "Park on a glowing platform to build your next upgrade.";
 }
 function closePanel() {
@@ -210,6 +212,7 @@ function closePanel() {
   paused = !started;
   keys.clear();
   touch.clear();
+  drag.cancel();
   canvas.focus();
 }
 function openPanel(kind: NonNullable<typeof modal>) {
@@ -218,6 +221,7 @@ function openPanel(kind: NonNullable<typeof modal>) {
   paused = true;
   keys.clear();
   touch.clear();
+  drag.cancel();
   const header = (eyebrow: string, title: string, copy: string) =>
     `<div class="panel-top"><span class="eyebrow">${eyebrow}</span><button class="close" aria-label="Close panel">×</button></div><h2>${title}</h2><p class="panel-copy">${copy}</p>`;
   if (kind === "help") {
@@ -227,7 +231,7 @@ function openPanel(kind: NonNullable<typeof modal>) {
         "A good day’s work.",
         "The blade does the gathering. The deposit does the selling.",
       ) +
-      `<div class="instructions"><p><b>01 / Sweep</b>W drives forward and S reverses without turning around. Left / right arrows steer; A / D also work. Space brakes.</p><p><b>02 / Deliver</b>Push gems onto the striped belt near the south end. Belts pull them into the dark hopper and pay you immediately.</p><p><b>03 / Grow</b>Park on a glowing platform to fund the rotating part above it. Money transfers gradually; partial funding is saved. Drive off and return for the next level. Find the key pads beside the gates. Find the magnet in Citrine Cut to gather stragglers, and the refinery in Amethyst Reach to increase every gem’s sale value. Opening sectors also unlocks stronger engine, plow and conveyor tiers.</p><p><b>04 / Finish</b>Clear all ${TOTAL_GEMS.toLocaleString()} gems to earn a fully upgraded victory lap. Every sector awards a halfway bonus.</p></div><div class="shortcut-list">C · camera &nbsp; / &nbsp; Scroll · zoom &nbsp; / &nbsp; M · sound &nbsp; / &nbsp; Esc · pause</div><p class="panel-note">Progress saves on this browser. On touch screens, use the directional pad.</p><button class="primary resume">Back to the quarry →</button>`;
+      `<div class="instructions"><p><b>01 / Sweep</b>W drives forward and S reverses without turning around. Left / right arrows steer; A / D also work. Space brakes.</p><p><b>02 / Deliver</b>Push gems onto the striped belt near the south end. Belts pull them into the dark hopper and pay you immediately.</p><p><b>03 / Grow</b>Park on a glowing platform to fund the rotating part above it. Money transfers gradually; partial funding is saved. Drive off and return for the next level. Find the key pads beside the gates. Find the magnet in Citrine Cut to gather stragglers, and the refinery in Amethyst Reach to increase every gem’s sale value. Opening sectors also unlocks stronger engine, plow and conveyor tiers.</p><p><b>04 / Finish</b>Clear all ${TOTAL_GEMS.toLocaleString()} gems to earn a fully upgraded victory lap. Every sector awards a halfway bonus.</p></div><div class="shortcut-list">C · camera &nbsp; / &nbsp; Scroll · zoom &nbsp; / &nbsp; M · sound &nbsp; / &nbsp; Esc · pause</div><p class="panel-note">Progress saves on this browser. Drag on the quarry to drive toward your finger; drag farther for more speed. Pull behind the machine to reverse; the stick turns coral. Release to brake. Direction buttons also work.</p><button class="primary resume">Back to the quarry →</button>`;
   } else if (kind === "victory") {
     $("panel-content").innerHTML =
       header(
@@ -375,6 +379,7 @@ window.addEventListener("keyup", (e) => keys.delete(e.code));
 window.addEventListener("blur", () => {
   keys.clear();
   touch.clear();
+  drag.cancel();
   if (started && !modal) {
     save();
     openPanel("pause");
@@ -384,12 +389,19 @@ document.addEventListener("visibilitychange", () => {
   if (document.hidden) {
     keys.clear();
     touch.clear();
+    drag.cancel();
     save();
     if (started && !modal) openPanel("pause");
   }
 });
-window.addEventListener("pagehide", save);
-window.addEventListener("resize", () => view?.resize());
+window.addEventListener("pagehide", () => {
+  drag.cancel();
+  save();
+});
+window.addEventListener("resize", () => {
+  drag.cancel();
+  view?.resize();
+});
 canvas.addEventListener(
   "wheel",
   (e) => {
@@ -404,6 +416,8 @@ for (const button of document.querySelectorAll<HTMLButtonElement>(
 )) {
   button.addEventListener("pointerdown", (e) => {
     e.preventDefault();
+    if (!started || paused) return;
+    drag.cancel();
     button.setPointerCapture(e.pointerId);
     touch.add(button.dataset.dir!);
     button.classList.add("held");
@@ -422,7 +436,7 @@ function frame(now: number) {
   if (!paused) {
     accumulator = Math.min(accumulator + dt, 0.1);
     const down = (...codes: string[]) => codes.some((c) => keys.has(c));
-    const input = {
+    const keyboardInput = {
       steer:
         Number(down("KeyD", "ArrowRight") || touch.has("right")) -
         Number(down("KeyA", "ArrowLeft") || touch.has("left")),
@@ -431,7 +445,13 @@ function frame(now: number) {
         Number(down("KeyS", "ArrowDown") || touch.has("down")),
       brake: down("Space") || touch.has("brake"),
     };
+    if (keyboardInput.throttle || keyboardInput.steer || keyboardInput.brake)
+      drag.cancel();
     while (accumulator >= 1 / 60) {
+      const input =
+        drag.read(sim.dozer.angle, (x, y) =>
+          view.headingFromScreenDrag(x, y),
+        ) ?? keyboardInput;
       sim.update(input);
       accumulator -= 1 / 60;
     }

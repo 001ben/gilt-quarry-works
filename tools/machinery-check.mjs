@@ -29,6 +29,27 @@ await page.goto("http://127.0.0.1:5173/inspection");
 await page.waitForFunction(() => window.inspection?.view.ready);
 const result = await page.evaluate(async () => {
   const { sim, view } = window.inspection;
+  const errors = [];
+  for (const mode of ["follow", "overview"]) {
+    view.cameraMode = mode;
+    view.render(0, 0);
+    const origin = view.project(0, 0);
+    for (const angle of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
+      const end = view.project(Math.sin(angle) * 100, -Math.cos(angle) * 100);
+      const heading = view.headingFromScreenDrag(
+        end.x - origin.x,
+        end.y - origin.y,
+      );
+      errors.push(
+        Math.abs(
+          Math.atan2(Math.sin(heading - angle), Math.cos(heading - angle)),
+        ),
+      );
+    }
+  }
+  view.cameraMode = "follow";
+  view.render(0, 0);
+  const dragProjectionAccurate = errors.every((e) => e < 1e-8);
   const matrices = () =>
     view.tracks.map((t) => Array.from(t.mesh.instanceMatrix.array));
   const initial = matrices();
@@ -63,6 +84,7 @@ const result = await page.evaluate(async () => {
   const beltAfter = view.belts.map((s) => Array.from(s.instanceMatrix.array));
   const times = frameTimes.slice(15).sort((a, b) => a - b);
   const output = {
+    dragProjectionAccurate,
     beltAnimated: JSON.stringify(beltStart) !== JSON.stringify(beltBefore),
     beltPaused: JSON.stringify(beltBefore) === JSON.stringify(beltAfter),
     hologramAnimated: holoStart !== holoBefore,
@@ -97,6 +119,7 @@ const result = await page.evaluate(async () => {
 });
 await page.screenshot({ path: ".local/runtime-dozer.png" });
 assert.equal(result.animated, true);
+assert.equal(result.dragProjectionAccurate, true);
 assert.equal(result.beltAnimated, true);
 assert.equal(result.beltPaused, true);
 assert.equal(result.hologramAnimated, true);

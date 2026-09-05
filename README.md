@@ -41,7 +41,7 @@ Only the compiled game is deployed. Browser saves belong to their origin, so the
 | Escape                         | Pause / resume                            |
 | ?                              | Operator's manual                         |
 
-Touch devices have forward, reverse, steering and brake buttons. Start your shift, then hold W to push the first blue heap onto the marked deposit belt. Park on a glowing platform to fund the rotating part above it. Coins transfer gradually and the platform bar fills. Partial payments survive leaving and reloading; each visit fits one level, then you drive off before funding another.
+Drag anywhere on the quarry to bring up a floating joystick. Drag toward the direction you want to travel; drag farther for more throttle. Pull behind the dozer to reverse (the knob turns coral), and release to brake. Directions follow the camera in both views. Mouse dragging also works; touch direction/brake buttons and keyboard controls remain available. Start your shift, then hold W to push the first blue heap onto the marked deposit belt. Park on a glowing platform to fund the rotating part above it. Coins transfer gradually and the platform bar fills. Partial payments survive leaving and reloading; each visit fits one level, then you drive off before funding another.
 
 ## The campaign
 
@@ -79,6 +79,7 @@ npm test
 npm run build
 # With the dev server running on port 5173 and Microsoft Edge installed:
 node tools/browser-check.mjs
+node tools/drag-check.mjs
 node tools/machinery-check.mjs
 node tools/polish-check.mjs
 node tools/performance-check.mjs current
