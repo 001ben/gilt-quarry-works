@@ -15,6 +15,19 @@ npm run dev
 
 Open the local address Vite prints. For a production build, run `npm run build`, then `npm run preview`. The build is static and can be served from any web host at its root path. The game has no backend; models, fonts and audio all run locally.
 
+## GitHub Pages deployment
+
+The Check and deploy game workflow runs tests and builds for the repository subdirectory. Pushes to main publish the dist artifact to GitHub Pages after checks pass; pull requests only test and build. The workflow can also be run manually from Actions.
+
+Enable Settings > Pages > Source: GitHub Actions before the first deployment. The expected project URL is https://001ben.github.io/gilt-quarry-works/. Pages from a private repository requires a supporting GitHub plan; otherwise the repository must be public.
+
+To check the same build locally:
+
+    npm run build -- --base=/gilt-quarry-works/
+    npm run preview -- --base=/gilt-quarry-works/
+
+Only the compiled game is deployed. Browser saves belong to their origin, so the hosted game starts a separate save from localhost.
+
 ## Controls
 
 | Control                        | Action                                    |

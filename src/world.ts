@@ -118,7 +118,9 @@ export class QuarryView {
     this.resize();
   }
   async load() {
-    const gltf = await new GLTFLoader().loadAsync("/models/gilt-dozer.glb");
+    const gltf = await new GLTFLoader().loadAsync(
+      `${import.meta.env.BASE_URL}models/gilt-dozer.glb`,
+    );
     // Static paintwork is batched separately from the moving track links.
     for (const name of ["Chassis", "Blade", "Wing_L", "Wing_R"]) {
       const source = gltf.scene.getObjectByName(name)!;
