@@ -1,0 +1,484 @@
+import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
+import { COLLECTOR, Simulation, UNIT } from "./simulation";
+import { GATES, SECTORS, stats } from "./progression";
+
+const C = {
+  sand: 0xcda37b,
+  edge: 0x8f6650,
+  pine: 0x304f43,
+  dark: 0x273b35,
+  cream: 0xf4e7c9,
+  yellow: 0xf4ba49,
+};
+const material = (color: number, roughness = 0.8, metalness = 0) =>
+  new THREE.MeshStandardMaterial({ color, roughness, metalness });
+export class QuarryView {
+  scene = new THREE.Scene();
+  renderer: THREE.WebGLRenderer;
+  camera = new THREE.OrthographicCamera(-20, 20, 15, -15, 0.1, 220);
+  machine = new THREE.Group();
+  model: THREE.Group | null = null;
+  intake = new THREE.Group();
+  gates: THREE.Group[] = [];
+  gemMeshes = new Map<number, THREE.Mesh>();
+  dust: { mesh: THREE.Mesh; velocity: THREE.Vector3; life: number }[] = [];
+  belts: THREE.Mesh[] = [];
+  zoom = 1;
+  cameraMode: "follow" | "overview" = "follow";
+  ready = false;
+  private target = new THREE.Vector3(0, 0, -1.5);
+  private statsKey = "";
+  private shadow: THREE.DirectionalLight;
+  private gemGeometry = new THREE.IcosahedronGeometry(1, 0);
+  private gemMaterials = SECTORS.map(
+    (s) =>
+      new THREE.MeshStandardMaterial({
+        color: s.color,
+        metalness: 0.28,
+        roughness: 0.24,
+        flatShading: true,
+      }),
+  );
+  private dustGeometry = new THREE.IcosahedronGeometry(0.12, 0);
+  private dustMaterial = material(0xe4c89b);
+  constructor(
+    public canvas: HTMLCanvasElement,
+    public sim: Simulation,
+  ) {
+    this.renderer = new THREE.WebGLRenderer({
+      canvas,
+      antialias: true,
+      alpha: false,
+      powerPreference: "high-performance",
+    });
+    this.renderer.setPixelRatio(Math.min(devicePixelRatio, 1.75));
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.35;
+    this.scene.background = new THREE.Color(0xc8b293);
+    this.scene.fog = new THREE.Fog(0xc8b293, 75, 130);
+    this.scene.add(new THREE.HemisphereLight(0xfff3d5, 0x82715e, 2.5));
+    const sun = (this.shadow = new THREE.DirectionalLight(0xffe8c1, 3.5));
+    sun.position.set(-22, 40, 18);
+    sun.castShadow = true;
+    Object.assign(sun.shadow.camera, {
+      left: -34,
+      right: 34,
+      top: 34,
+      bottom: -34,
+      near: 1,
+      far: 100,
+    });
+    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.bias = -0.0006;
+    sun.shadow.normalBias = 0.045;
+    this.scene.add(sun, sun.target);
+    this.buildQuarry();
+    this.buildIntake();
+    this.scene.add(this.machine);
+    this.resize();
+  }
+  async load() {
+    const gltf = await new GLTFLoader().loadAsync("/models/gilt-dozer.glb");
+    // Bake static parts by material: preserve four upgrade groups, avoid a draw call per shoe.
+    for (const name of ["Chassis", "Blade", "Wing_L", "Wing_R"]) {
+      const source = gltf.scene.getObjectByName(name)!;
+      source.updateWorldMatrix(true, true);
+      const buckets = new Map<THREE.Material, THREE.BufferGeometry[]>();
+      source.traverse((obj) => {
+        if (!(obj instanceof THREE.Mesh)) return;
+        const mat = obj.material as THREE.Material;
+        const geometries = buckets.get(mat) ?? [];
+        geometries.push(obj.geometry.clone().applyMatrix4(obj.matrixWorld));
+        buckets.set(mat, geometries);
+      });
+      const group = new THREE.Group();
+      group.name = name;
+      for (const [mat, geometries] of buckets) {
+        const merged = mergeGeometries(geometries, false);
+        if (merged) {
+          const mesh = new THREE.Mesh(merged, mat);
+          mesh.castShadow = true;
+          mesh.receiveShadow = true;
+          group.add(mesh);
+        }
+        geometries.forEach((g) => g.dispose());
+      }
+      this.machine.add(group);
+    }
+    this.model = this.machine;
+    this.ready = true;
+    this.statsKey = "";
+  }
+  box(
+    parent: THREE.Object3D,
+    x: number,
+    y: number,
+    z: number,
+    w: number,
+    h: number,
+    d: number,
+    color: number,
+    cast = true,
+  ) {
+    const mesh = new THREE.Mesh(
+      new THREE.BoxGeometry(w, h, d),
+      material(color),
+    );
+    mesh.position.set(x, y, z);
+    mesh.castShadow = cast;
+    mesh.receiveShadow = true;
+    parent.add(mesh);
+    return mesh;
+  }
+  label(
+    text: string,
+    x: number,
+    y: number,
+    z: number,
+    size = 3,
+    color = "#f8edcf",
+    background = "",
+  ) {
+    const canvas = document.createElement("canvas");
+    canvas.width = 768;
+    canvas.height = 128;
+    const ctx = canvas.getContext("2d")!;
+    if (background) {
+      ctx.fillStyle = background;
+      ctx.fillRect(0, 0, 768, 128);
+    }
+    ctx.fillStyle = color;
+    ctx.font = 'bold 58px "Segoe UI", sans-serif';
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(text, 384, 64);
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    const mesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(size, size / 6),
+      new THREE.MeshBasicMaterial({
+        map: texture,
+        transparent: true,
+        depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -2,
+      }),
+    );
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.position.set(x, y, z);
+    this.scene.add(mesh);
+    return mesh;
+  }
+  buildQuarry() {
+    this.box(this.scene, 0, -1.1, -20, 32, 2.1, 66, C.edge);
+    this.box(this.scene, 0, -0.1, -20, 30, 0.2, 64, C.sand, false);
+    // Low terraced cliffs frame the playable floor without obscuring its edges.
+    let seed = 422;
+    const random = () => {
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+      return seed / 4294967296;
+    };
+    for (let side of [-1, 1])
+      for (let z = -53; z < 15; z += 2.8) {
+        const h = 1.1 + random() * 1.3;
+        const rock = this.box(
+          this.scene,
+          side * (16.3 + random() * 0.7),
+          h / 2 - 0.15,
+          z,
+          2.7 + random(),
+          h,
+          3.6,
+          random() > 0.5 ? 0xb28261 : 0xa8795c,
+        );
+        rock.rotation.y = random() * 0.25;
+        this.box(
+          this.scene,
+          side * 18.2,
+          h * 0.7 - 0.2,
+          z,
+          2.7,
+          h * 1.4,
+          3.7,
+          0xbf9472,
+        );
+      }
+    for (let i = 0; i < 200; i++) {
+      const x = -14.4 + random() * 28.8,
+        z = -51 + random() * 62;
+      const pebble = new THREE.Mesh(
+        new THREE.IcosahedronGeometry(0.035 + random() * 0.1, 0),
+        material(random() > 0.5 ? 0xb98e67 : 0xe2bb8d),
+      );
+      pebble.position.set(x, 0.018, z);
+      pebble.scale.y = 0.25;
+      this.scene.add(pebble);
+    }
+    // Survey stripes, sector markings and thin route guides establish a working quarry.
+    for (let i = 0; i < 3; i++) {
+      const z = (SECTORS[i].maxY + SECTORS[i].minY) / 60;
+      this.label(
+        `0${i + 1}  /  ${SECTORS[i].name.toUpperCase()}`,
+        0,
+        0.015,
+        z - 4.6,
+        12,
+        "#9b7356",
+      );
+      for (let side of [-1, 1])
+        for (let k = 0; k < 10; k++)
+          this.box(
+            this.scene,
+            side * 14.55,
+            0.025,
+            z - 7 + k * 1.4,
+            0.1,
+            0.02,
+            0.65,
+            0xe6c49d,
+            false,
+          );
+    }
+    for (const [i, y] of GATES.entries()) {
+      const gate = new THREE.Group();
+      gate.position.z = y / UNIT;
+      for (let x = -14; x <= 14; x += 2) {
+        this.box(gate, x, 0.56, 0, 1.85, 0.64, 0.36, C.yellow);
+        const stripe = this.box(gate, x, 0.56, -0.2, 0.36, 0.65, 0.035, C.dark);
+        stripe.rotation.z = -0.4;
+      }
+      for (let x of [-14.6, 14.6]) {
+        this.box(gate, x, 1, 0, 0.38, 2, 0.5, C.pine);
+        this.box(gate, x, 2.06, 0, 0.5, 0.14, 0.55, C.cream);
+      }
+      this.gates.push(gate);
+      this.scene.add(gate);
+      this.label(
+        `SECTOR 0${i + 2}  /  ${i === 0 ? "CITRINE" : "AMETHYST"}`,
+        0,
+        0.02,
+        y / UNIT + 1.4,
+        8,
+        "#765640",
+      );
+    }
+    // Field workshop, utility tanks and a small depot on the safe rear edge.
+    const shop = new THREE.Group();
+    shop.position.set(-11.3, 0, 9.2);
+    this.box(shop, 0, 0.05, 0, 5.8, 0.1, 5, 0xb59576, false);
+    this.box(shop, 0, 1.3, 1.2, 4.6, 2.6, 2.3, C.pine);
+    this.box(shop, 0, 2.7, 1.05, 5, 0.22, 2.9, C.cream);
+    this.box(shop, 0, 1.15, -0.02, 2.7, 2.1, 0.08, C.dark);
+    for (let x of [-1.65, 1.65])
+      this.box(shop, x, 1.7, -0.05, 0.46, 0.55, 0.1, C.yellow);
+    for (let x of [-1.05, 1.05])
+      this.box(shop, x, 0.025, -1.5, 0.09, 0.04, 1.6, C.cream, false);
+    this.scene.add(shop);
+    this.label("WORKSHOP", -11.3, 2.84, 10.1, 4.3, "#304f43");
+    this.label("SERVICE BAY", -11.3, 0.13, 7.9, 4.3, "#ede0bf");
+    for (let i = 0; i < 3; i++) {
+      this.box(this.scene, 10.5 + i * 1.25, 0.55, 10, 1, 1.1, 1, C.pine);
+      this.box(this.scene, 10.5 + i * 1.25, 1.12, 10, 1.04, 0.1, 1.04, C.cream);
+    }
+    // Crane silhouette at the depot, deliberately outside the driving surface.
+    this.box(this.scene, 17, 3.6, 8, 0.3, 7.2, 0.3, C.dark);
+    this.box(this.scene, 15.3, 7.3, 8, 4, 0.3, 0.3, C.yellow);
+    this.box(this.scene, 13.4, 5.7, 8, 0.035, 3.2, 0.035, C.dark);
+    this.box(this.scene, 13.4, 4.05, 8, 0.3, 0.15, 0.3, C.dark);
+    this.label("GILT  /  QUARRY WORKS", 0, 0.03, 11.5, 10, "#86664e");
+  }
+  buildIntake() {
+    this.intake.traverse((o) => {
+      if (o instanceof THREE.Mesh) {
+        o.geometry.dispose();
+        (o.material as THREE.Material).dispose();
+      }
+    });
+    this.intake.clear();
+    this.belts = [];
+    const s = stats(this.sim.progress),
+      width = s.intakeWidth / UNIT,
+      depth = s.intakeDepth / UNIT;
+    this.intake.position.set(0, 0, COLLECTOR.y / UNIT);
+    this.box(
+      this.intake,
+      0,
+      0.025,
+      0,
+      width + 0.3,
+      0.05,
+      depth + 0.25,
+      C.yellow,
+      false,
+    );
+    this.box(this.intake, 0, 0.07, 0, width, 0.08, depth, C.dark, false);
+    for (let x = -width / 2 + 0.1; x < width / 2; x += 0.32) {
+      const belt = this.box(
+        this.intake,
+        x,
+        0.12,
+        0,
+        0.05,
+        0.02,
+        depth - 0.15,
+        0x748579,
+        false,
+      );
+      this.belts.push(belt);
+    }
+    this.box(this.intake, 0, 0.14, 0, 2.25, 0.1, 1.5, 0x172c29, false);
+    for (let x of [-1.17, 1.17])
+      this.box(this.intake, x, 0.27, 0, 0.15, 0.3, 1.75, C.cream);
+    this.box(this.intake, 0, 0.3, 0.88, 2.5, 0.4, 0.16, C.pine);
+    if (this.sim.progress.levels.intake >= 4) {
+      this.box(this.intake, 0, 0.08, -2.8, 1.8, 0.1, 3.5, C.dark, false);
+      for (let z = -4.4; z < -1.1; z += 0.35)
+        this.box(this.intake, 0, 0.14, z, 1.65, 0.02, 0.05, 0x748579, false);
+    }
+    this.scene.add(this.intake);
+    if (!this.scene.getObjectByName("intake-label"))
+      this.label("↓  DEPOSIT  ↓", 0, 0.022, 6.9, 4.4, "#f8edcf").name =
+        "intake-label";
+  }
+  resize() {
+    const w = this.canvas.clientWidth,
+      h = this.canvas.clientHeight;
+    this.renderer.setSize(w, h, false);
+    const viewHeight = (w < 700 ? 37 : 28) / this.zoom,
+      aspect = w / h;
+    this.camera.left = (-viewHeight * aspect) / 2;
+    this.camera.right = (viewHeight * aspect) / 2;
+    this.camera.top = viewHeight / 2;
+    this.camera.bottom = -viewHeight / 2;
+    this.camera.updateProjectionMatrix();
+  }
+  project(x: number, y: number, height = 0.5) {
+    const v = new THREE.Vector3(x / UNIT, height, y / UNIT).project(
+      this.camera,
+    );
+    return {
+      x: (v.x * 0.5 + 0.5) * this.canvas.clientWidth,
+      y: (-v.y * 0.5 + 0.5) * this.canvas.clientHeight,
+    };
+  }
+  burst(x: number, y: number, color: number) {
+    const mat =
+      this.gemMaterials[SECTORS.findIndex((s) => s.color === color)] ??
+      this.dustMaterial;
+    for (let i = 0; i < 10; i++) {
+      const mesh = new THREE.Mesh(this.dustGeometry, mat);
+      mesh.position.set(x / UNIT, 0.4, y / UNIT);
+      this.scene.add(mesh);
+      this.dust.push({
+        mesh,
+        velocity: new THREE.Vector3(
+          (Math.random() - 0.5) * 2,
+          1 + Math.random() * 2,
+          (Math.random() - 0.5) * 2,
+        ),
+        life: 0.7,
+      });
+    }
+  }
+  render(dt: number, time: number) {
+    const p = this.sim.position,
+      s = stats(this.sim.progress);
+    this.machine.position.set(
+      p.x / UNIT,
+      Math.sin(time * 18) * Math.min(this.sim.dozer.speed * 0.008, 0.018),
+      p.y / UNIT,
+    );
+    this.machine.rotation.y = -this.sim.dozer.angle;
+    this.machine.scale.setScalar(s.scale);
+    const key = JSON.stringify(this.sim.progress.levels);
+    if (key !== this.statsKey && this.ready) {
+      this.statsKey = key;
+      this.machine.getObjectByName("Blade")!.scale.x =
+        s.bladeWidth / (3.3 * s.scale);
+      for (const [name, side] of [
+        ["Wing_L", -1],
+        ["Wing_R", 1],
+      ] as const) {
+        const wing = this.machine.getObjectByName(name)!;
+        wing.visible = s.wings;
+        wing.position.x = (side * (s.bladeWidth / s.scale - 3.3)) / 2;
+      }
+      this.buildIntake();
+    }
+    this.gates.forEach((g, i) => {
+      g.visible = this.sim.progress.sector <= i + 1;
+    });
+    for (const [id, gem] of this.sim.gems) {
+      let mesh = this.gemMeshes.get(id);
+      if (!mesh) {
+        mesh = new THREE.Mesh(this.gemGeometry, this.gemMaterials[gem.sector]);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        this.scene.add(mesh);
+        this.gemMeshes.set(id, mesh);
+      }
+      const r = gem.radius / UNIT;
+      mesh.position.set(
+        gem.body.position.x / UNIT,
+        r * 0.65,
+        gem.body.position.y / UNIT,
+      );
+      mesh.rotation.set(0.3 + id * 0.83, gem.body.angle, id * 0.49);
+      mesh.scale.set(r, r * (1.05 + (id % 3) * 0.2), r);
+    }
+    for (const [id, mesh] of this.gemMeshes)
+      if (!this.sim.gems.has(id)) {
+        this.scene.remove(mesh);
+        this.gemMeshes.delete(id);
+      }
+    if (this.sim.dozer.speed > 0.7 && Math.random() < dt * 15) {
+      const mesh = new THREE.Mesh(this.dustGeometry, this.dustMaterial);
+      mesh.position.set(
+        p.x / UNIT + (Math.random() - 0.5) * 2,
+        0.12,
+        p.y / UNIT,
+      );
+      this.scene.add(mesh);
+      this.dust.push({
+        mesh,
+        velocity: new THREE.Vector3(0, 0.15, 0),
+        life: 0.5,
+      });
+    }
+    for (let i = this.dust.length - 1; i >= 0; i--) {
+      const particle = this.dust[i];
+      particle.life -= dt;
+      particle.velocity.y -= dt * 3;
+      particle.mesh.position.addScaledVector(particle.velocity, dt);
+      particle.mesh.scale.setScalar(Math.max(0, particle.life * 2));
+      if (particle.life <= 0) {
+        this.scene.remove(particle.mesh);
+        this.dust.splice(i, 1);
+      }
+    }
+    const mobile = this.canvas.clientWidth < 700;
+    const follow = new THREE.Vector3(
+      (p.x / UNIT) * (mobile ? 1 : 0.36),
+      0,
+      mobile ? p.y / UNIT - 2.3 : Math.min(1, p.y / UNIT - 2.3),
+    );
+    if (this.cameraMode === "overview") {
+      follow.set(0, 0, -19);
+    }
+    this.target.lerp(follow, 1 - Math.exp(-dt * 3));
+    const offset =
+      this.cameraMode === "overview"
+        ? new THREE.Vector3(18, 56, 40)
+        : new THREE.Vector3(10, 24, 18);
+    this.camera.position.copy(this.target).add(offset);
+    this.camera.lookAt(this.target);
+    this.shadow.position.copy(this.target).add(new THREE.Vector3(-22, 40, 18));
+    this.shadow.target.position.copy(this.target);
+    this.renderer.render(this.scene, this.camera);
+  }
+}
