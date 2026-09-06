@@ -112,7 +112,61 @@ try {
   assert.match(await page.locator("#assay-result").innerText(), /Triple!/);
   assert.equal(await page.locator(".reel-strip").count(), 0);
   assert.equal(await page.locator("#assay-spin").isEnabled(), true);
+  await page.locator("#panel").evaluate((e) => (e.scrollTop = 0));
   await page.screenshot({ path: ".local/assay-win.png" });
+
+  assert.equal(await page.locator(".reel-neighbor").count(), 6);
+  assert.equal(await page.locator(".reel-match").count(), 3);
+  const centered = await page
+    .locator(".reel-symbol-center")
+    .evaluateAll((symbols) =>
+      symbols.every((symbol) => {
+        const row = symbol.getBoundingClientRect(),
+          window = symbol.closest(".reel-window").getBoundingClientRect();
+        return (
+          Math.abs(
+            (row.top + row.bottom) / 2 - (window.top + window.bottom) / 2,
+          ) < 1
+        );
+      }),
+    );
+  assert.ok(centered, "Winning symbols sit on the center payline");
+  for (const [faces, matches] of [
+    [
+      [0, 1, 0],
+      [0, 2],
+    ],
+    [[0, 1, 2], []],
+  ]) {
+    await page.evaluate((faces) => {
+      let index = 0;
+      window.originalRandom = crypto.getRandomValues.bind(crypto);
+      crypto.getRandomValues = (array) => {
+        array.fill(faces[index++] * 1073741824);
+        return array;
+      };
+    }, faces);
+    await page.locator("#assay-spin").click();
+    await page.evaluate(() => {
+      crypto.getRandomValues = window.originalRandom;
+    });
+    await page.waitForTimeout(1950);
+    const highlighted = await page
+      .locator(".assay-reel")
+      .evaluateAll((reels) =>
+        reels.flatMap((r, i) =>
+          r.classList.contains("reel-match") ? [i] : [],
+        ),
+      );
+    assert.deepEqual(highlighted, matches);
+    assert.equal(await page.locator(".reel-neighbor").count(), 6);
+    await page.locator("#panel").evaluate((e) => (e.scrollTop = 0));
+    await page.screenshot({
+      path: matches.length
+        ? ".local/assay-pair.png"
+        : ".local/assay-no-match.png",
+    });
+  }
 
   // Zero coins still allow another free post-campaign job.
   const victory = structuredClone(fresh);
