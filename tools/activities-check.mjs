@@ -51,6 +51,8 @@ try {
 
   await page.locator("#assay-spin").waitFor({ state: "visible" });
   assert.equal(await page.locator("#assay-balance").innerText(), "$1,000");
+  assert.match(await page.locator(".assay-game .panel-note").innerText(), /98\.75%/);
+  assert.match(await page.locator(".assay-marquee").innerText(), /6\.8× RETURN/);
   await page.screenshot({ path: ".local/assay-desktop.png" });
   await page.locator('[data-bet="100"]').click();
   await page.locator("#assay-spin").click();
@@ -146,6 +148,9 @@ try {
   assert.equal(trace.blanks, 0);
   assert.equal(trace.replaced, 0);
   assert.match(await page.locator("#assay-result").innerText(), /Triple!/);
+  assert.match(await page.locator(".assay-line-label").innerText(), /6\.8× RETURN/);
+  const tripleSave = await readSave();
+  assert.equal(tripleSave.progress.lastAssay.payout, tripleSave.progress.lastAssay.bet * 6.8);
   assert.equal(await page.locator(".reel-strip").count(), 3);
   assert.equal(await page.locator("#assay-spin").isEnabled(), true);
   await page.locator("#panel").evaluate((e) => (e.scrollTop = 0));

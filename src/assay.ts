@@ -1,12 +1,14 @@
 import type { Progress } from "./progression";
 
 export const ASSAY_BETS = [10, 50, 100, 500] as const;
+export const ASSAY_TRIPLE_RETURN = 6.8;
+export const ASSAY_RTP_PERCENT = ((ASSAY_TRIPLE_RETURN * 4 + 36) / 64) * 100;
 export const CRYSTALS = ["Quartz", "Citrine", "Amethyst", "Emerald"] as const;
 export type AssayResult = NonNullable<Progress["lastAssay"]>;
 
 export function assayPayout(bet: number, faces: readonly number[]) {
   const distinct = new Set(faces).size;
-  return bet * (distinct === 1 ? 6 : distinct === 2 ? 1 : 0);
+  return bet * (distinct === 1 ? ASSAY_TRIPLE_RETURN : distinct === 2 ? 1 : 0);
 }
 export function validAssay(value: unknown): value is AssayResult | null {
   if (value === null) return true;
@@ -17,7 +19,9 @@ export function validAssay(value: unknown): value is AssayResult | null {
     Array.isArray(r.faces) &&
     r.faces.length === 3 &&
     r.faces.every((f) => Number.isInteger(f) && f >= 0 && f < 4) &&
-    r.payout === assayPayout(r.bet, r.faces)
+    // Historical wins are already settled. Keep old 6x results without re-crediting them.
+    (r.payout === assayPayout(r.bet, r.faces) ||
+      (new Set(r.faces).size === 1 && r.payout === r.bet * 6))
   );
 }
 function randomFraction() {

@@ -1,5 +1,11 @@
 import { SlotReel } from "./slot-reel";
-import { ASSAY_BETS, playAssay, type AssayResult } from "./assay";
+import {
+  ASSAY_BETS,
+  ASSAY_TRIPLE_RETURN,
+  ASSAY_RTP_PERCENT,
+  playAssay,
+  type AssayResult,
+} from "./assay";
 import type { Progress } from "./progression";
 
 /** The panel owns reveal timers; the domain owns the already-settled wager. */
@@ -18,13 +24,13 @@ export function mountAssayPanel(
     { length: 8 },
     (_, i) => '<i style="--coin:' + i + '">✦</i>',
   ).join("");
-  area.innerHTML = `<div class="assay-machine" aria-label="Three crystal reels"><div class="assay-marquee"><span>◇ LUCKY ASSAY ◇</span><strong>TRIPLE CRYSTALS · 6× RETURN</strong></div><div class="assay-reels">${initialReels}</div><div class="assay-line-label">CENTER LINE PAYS</div><div class="assay-lights">● ● ● ● ● ● ● ● ●</div><div class="assay-celebration" aria-hidden="true">${celebration}</div></div>
+  area.innerHTML = `<div class="assay-machine" aria-label="Three crystal reels"><div class="assay-marquee"><span>◇ LUCKY ASSAY ◇</span><strong>TRIPLE CRYSTALS · ${ASSAY_TRIPLE_RETURN}× RETURN</strong></div><div class="assay-reels">${initialReels}</div><div class="assay-line-label">CENTER LINE PAYS</div><div class="assay-lights">● ● ● ● ● ● ● ● ●</div><div class="assay-celebration" aria-hidden="true">${celebration}</div></div>
     <div class="assay-bank">QUARRY COINS <strong id="assay-balance"></strong></div>
     <div class="assay-bets" role="group" aria-label="Choose your stake">${ASSAY_BETS.map((bet) => `<button data-bet="${bet}" aria-pressed="false">$${bet}</button>`).join("")}</div>
     <button class="primary" id="assay-spin"></button>
     <p id="assay-result" role="status" aria-live="polite"></p>
-    <div class="assay-odds"><b>EVERY SPIN · SAME ODDS</b><p><span>Three matching crystals</span><strong>6× · 6.25%</strong></p><p><span>Exactly one pair</span><strong>Stake back · 56.25%</strong></p><p><span>Three different crystals</span><strong>$0 · 37.5%</strong></p></div>
-    <p class="panel-note">Payouts include your stake. Four equally likely crystals per reel. Average return: 93.75% of stakes over many plays. Quarry coins only; no purchases or cash-out.</p>`;
+    <div class="assay-odds"><b>EVERY SPIN · SAME ODDS</b><p><span>Three matching crystals</span><strong>${ASSAY_TRIPLE_RETURN}× · 6.25%</strong></p><p><span>Exactly one pair</span><strong>Stake back · 56.25%</strong></p><p><span>Three different crystals</span><strong>$0 · 37.5%</strong></p></div>
+    <p class="panel-note">Payouts include your stake. Four equally likely crystals per reel. Average return: ${ASSAY_RTP_PERCENT}% of stakes over many plays. Quarry coins only; no purchases or cash-out.</p>`;
   root.append(area);
   const spin = area.querySelector<HTMLButtonElement>("#assay-spin")!;
   const result = area.querySelector<HTMLElement>("#assay-result")!;
@@ -61,7 +67,7 @@ export function mountAssayPanel(
     area.classList.toggle("assay-win", r.payout > r.bet);
     area.querySelector(".assay-line-label")!.textContent =
       r.payout > r.bet
-        ? "TRIPLE MATCH · 6× RETURN"
+        ? `TRIPLE MATCH · ${r.payout / r.bet}× RETURN`
         : r.payout
           ? "PAIR MATCH · STAKE BACK"
           : "CENTER LINE · NO MATCH";

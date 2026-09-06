@@ -1,7 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import Matter from "matter-js";
-import { assayPayout, playAssay, validAssay } from "../src/assay";
+import {
+  ASSAY_BETS,
+  ASSAY_RTP_PERCENT,
+  assayPayout,
+  playAssay,
+  validAssay,
+} from "../src/assay";
 import { freshProgress, SECTORS } from "../src/progression";
 import { generateOvertimeLayout, overtimeContract } from "../src/overtime";
 import { ACTIVITY_PADS } from "../src/activities";
@@ -22,7 +28,7 @@ function finishedQuarry() {
   return new Simulation(sim.snapshot());
 }
 
-test("all 64 assay outcomes match the displayed odds and 93.75% return", () => {
+test("all 64 assay outcomes match the displayed odds and 98.75% return", () => {
   const counts = new Map<number, number>();
   for (let a = 0; a < 4; a++)
     for (let b = 0; b < 4; b++)
@@ -30,13 +36,40 @@ test("all 64 assay outcomes match the displayed odds and 93.75% return", () => {
         const payout = assayPayout(100, [a, b, c]);
         counts.set(payout, (counts.get(payout) ?? 0) + 1);
       }
-  assert.equal(counts.get(600), 4);
+  assert.equal(counts.get(680), 4);
   assert.equal(counts.get(100), 36);
   assert.equal(counts.get(0), 24);
   assert.equal(
     [...counts].reduce((sum, [value, count]) => sum + value * count, 0) / 64,
-    93.75,
+    98.75,
   );
+});
+
+test("every stake pays whole coins with the same advertised RTP", () => {
+  for (const bet of ASSAY_BETS) {
+    let total = 0;
+    for (let a = 0; a < 4; a++)
+      for (let b = 0; b < 4; b++)
+        for (let c = 0; c < 4; c++) {
+          const payout = assayPayout(bet, [a, b, c]);
+          assert.ok(Number.isInteger(payout));
+          total += payout;
+        }
+    assert.equal(total / (64 * bet), 0.9875);
+    assert.equal((total / (64 * bet)) * 100, ASSAY_RTP_PERCENT);
+  }
+});
+
+test("legacy 6x wins keep their settled balance across repeated reloads", () => {
+  const sim = new Simulation();
+  sim.progress.money = sim.progress.earned = 600;
+  sim.progress.lastAssay = { bet: 100, faces: [2, 2, 2], payout: 600 };
+  const restored = new Simulation(parseSave(JSON.stringify(sim.snapshot()))!);
+  const reloaded = parseSave(JSON.stringify(restored.snapshot()))!;
+  assert.equal(reloaded.progress.money, 600);
+  assert.equal(reloaded.progress.earned, 600);
+  assert.deepEqual(reloaded.progress.lastAssay, sim.progress.lastAssay);
+  assert.equal(validAssay({ bet: 100, faces: [2, 2, 1], payout: 600 }), false);
 });
 
 test("stakes settle atomically with net-win accounting; invalid bets never charge", () => {
@@ -50,17 +83,17 @@ test("stakes settle atomically with net-win accounting; invalid bets never charg
     null,
   );
   const triple = playAssay(p, 10, () => 0.8)!;
-  assert.deepEqual(triple, { bet: 10, faces: [3, 3, 3], payout: 60 });
-  assert.equal(p.money, 150);
-  assert.equal(p.earned, 150);
+  assert.deepEqual(triple, { bet: 10, faces: [3, 3, 3], payout: 68 });
+  assert.equal(p.money, 158);
+  assert.equal(p.earned, 158);
   let rolls = [0, 0.3, 0.7];
   playAssay(p, 100, () => rolls.shift()!);
-  assert.equal(p.money, 50);
-  assert.equal(p.earned, 150);
+  assert.equal(p.money, 58);
+  assert.equal(p.earned, 158);
   rolls = [0, 0.1, 0.8];
   playAssay(p, 50, () => rolls.shift()!);
-  assert.equal(p.money, 50);
-  assert.equal(p.earned, 150);
+  assert.equal(p.money, 58);
+  assert.equal(p.earned, 158);
   assert.ok(validAssay(p.lastAssay));
   assert.equal(validAssay({ ...p.lastAssay, payout: 100000 }), false);
 });
@@ -70,7 +103,7 @@ test("old saves migrate and settled assay outcomes survive reload", () => {
   sim.progress.money = sim.progress.earned = 100;
   playAssay(sim.progress, 100, () => 0.5);
   const restored = parseSave(JSON.stringify(sim.snapshot()))!;
-  assert.equal(restored.progress.money, 600);
+  assert.equal(restored.progress.money, 680);
   assert.deepEqual(restored.progress.lastAssay, sim.progress.lastAssay);
   for (const version of [2, 3, 4]) {
     const legacy = { ...sim.snapshot(), version };
