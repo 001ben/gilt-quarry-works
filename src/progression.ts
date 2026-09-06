@@ -131,7 +131,7 @@ export function stats(p: Progress) {
     intakeWidth: [90, 240, 420, 630, 840][p.levels.intake - 1],
     intakeDepth: 56 + (p.levels.intake - 1) * 10,
     feederLength: Math.max(0, p.levels.intake - 2) * 110,
-    magnetRange: p.levels.magnet ? 55 + p.levels.magnet * 24 : 0,
+    magnetRange: [0, 79, 110, 155, 215, 285][p.levels.magnet],
     magnetStrength: p.levels.magnet * 0.045,
     gemBonus: p.levels.refinery,
     vacuumCapacity: [0, 40, 90, 180][p.levels.vacuum],

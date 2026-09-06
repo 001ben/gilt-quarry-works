@@ -96,6 +96,7 @@ try {
   await stick.waitFor({ state: "hidden" });
   // Opening a panel and resizing cancel gestures too.
   await send("touchStart", [point(1, 195, 430)]);
+  await page.locator("#tools-toggle").click();
   await page.locator("#help").click();
   await stick.waitFor({ state: "hidden" });
   await send("touchEnd", []);

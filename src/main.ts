@@ -5,6 +5,7 @@ import "@fontsource/dm-sans/latin-400.css";
 import "@fontsource/dm-sans/latin-600.css";
 import "@fontsource/dm-sans/latin-700.css";
 import "./style.css";
+import "./mobile-hud.css";
 import { mountAssayPanel } from "./assay-panel";
 import { ACTIVITY_PADS } from "./activities";
 import { overtimeContract } from "./overtime";
@@ -44,6 +45,7 @@ app.innerHTML = `
     <div class="account"><span>AVAILABLE FUNDS</span><strong id="money">$0</strong><small id="save-state">LOCAL SAVE READY</small></div>
   </header>
   <nav class="tools" aria-label="Game controls">
+    <button id="tools-toggle" aria-label="More game controls" aria-expanded="false">⋯</button>
     <button id="sound" title="Toggle sound (M)" aria-label="Mute sound">♫</button>
     <button id="camera" title="Change camera (C)" aria-label="Change camera">⌖</button>
     <button id="help" title="Controls (?)" aria-label="Show controls">?</button>
@@ -108,6 +110,7 @@ function save() {
     storageAvailable = false;
     $("save-state").textContent = "SAVE UNAVAILABLE";
   }
+  app.classList.toggle("save-unavailable", !storageAvailable);
 }
 function activeSector() {
   return sim.position.y < -990 ? 2 : sim.position.y < -420 ? 1 : 0;
@@ -128,6 +131,11 @@ function updateHud() {
     : cargo === capacity
       ? "FULL · RETURN TO THE BELT"
       : "Rear chute over belt to unload";
+  $("cargo-hud").dataset.state = sim.vacuum.unloading
+    ? "Unloading"
+    : cargo === capacity
+      ? "Full · return to belt"
+      : "Cargo";
 
   $("location").textContent = `0${sector + 1} / ${zone.name.toUpperCase()}`;
   $("mineral").textContent = zone.mineral.toUpperCase();
@@ -245,6 +253,10 @@ function updateHud() {
             ? "SOUTH"
             : "NORTH");
     $("pad-guide").classList.toggle("funding", onPad);
+    $("pad-guide").classList.toggle(
+      "nearby",
+      onPad || Math.hypot(dx, dy) < 130,
+    );
   }
   $("tip").textContent = sim.padCompleted
     ? "Upgrade fitted. Drive off and return for the next level."
@@ -275,6 +287,8 @@ function closePanel() {
   canvas.focus();
 }
 function openPanel(kind: NonNullable<typeof modal>) {
+  app.classList.remove("tools-expanded");
+  $("tools-toggle").setAttribute("aria-expanded", "false");
   if (!started) return;
   panelCleanup();
   panelCleanup = () => {};
@@ -373,9 +387,16 @@ function openPanel(kind: NonNullable<typeof modal>) {
         "Shift paused.",
         "Your machine and every gem will be right here.",
       ) +
-      `<button class="primary resume">Back to work →</button><button class="text-button" id="open-manual">Operator’s manual</button><button class="text-button" id="open-overtime">Overtime contracts</button><button class="text-button" id="reset">Clear save & start again</button><p class="panel-note">${storageAvailable ? "Your progress is saved locally." : "Browser storage is unavailable. Keep this tab open to preserve your shift."}</p>`;
+      `<button class="primary resume">Back to work →</button><button class="text-button" id="driving-buttons" aria-pressed="${app.classList.contains("button-driving")}">Direction buttons: ${app.classList.contains("button-driving") ? "on" : "off"}</button><button class="text-button" id="open-manual">Operator’s manual</button><button class="text-button" id="open-overtime">Overtime contracts</button><button class="text-button" id="reset">Clear save & start again</button><p class="panel-note">${storageAvailable ? "Your progress is saved locally." : "Browser storage is unavailable. Keep this tab open to preserve your shift."}</p>`;
   }
   if (!dialog.open) dialog.showModal();
+  $("driving-buttons")?.addEventListener("click", () => {
+    const enabled = app.classList.toggle("button-driving");
+    touch.clear();
+    $("driving-buttons").setAttribute("aria-pressed", String(enabled));
+    $("driving-buttons").textContent =
+      "Direction buttons: " + (enabled ? "on" : "off");
+  });
   dialog.querySelector(".close")?.addEventListener("click", closePanel);
   dialog
     .querySelectorAll(".resume")
@@ -473,6 +494,10 @@ $("activity-open").addEventListener("click", () => {
   if (sim.activeActivity) openPanel(sim.activeActivity);
 });
 $("help").addEventListener("click", () => openPanel("help"));
+$("tools-toggle").addEventListener("click", () => {
+  const expanded = app.classList.toggle("tools-expanded");
+  $("tools-toggle").setAttribute("aria-expanded", String(expanded));
+});
 $("pause").addEventListener("click", () => {
   if (modal) closePanel();
   else {

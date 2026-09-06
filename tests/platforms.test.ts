@@ -179,6 +179,11 @@ test("magnet starts weak, strengthens with upgrades, and never pulls behind the 
   assert.ok(trial(1, 30, -130) > 1);
   assert.ok(trial(5, 30, -130) > trial(1, 30, -130) * 2);
   assert.equal(trial(0, 30, -130), 0);
+  assert.equal(trial(3, 0, -275), 0);
+  assert.ok(trial(4, 0, -275) > 1, "tier four reaches beyond tier three");
+  assert.equal(trial(4, 0, -345), 0);
+  assert.ok(trial(5, 0, -345) > 1, "tier five gathers distant stragglers");
+  assert.equal(trial(5, 0, -390), 0, "maximum reach remains bounded");
   assert.equal(trial(5, 120, 50), 0);
   assert.equal(trial(5, 0, -455, -290), 0);
   assert.equal(
@@ -230,12 +235,12 @@ test("magnet leaves packed ore sleeping but still draws a nearby straggler", () 
   for (let i = 0; i < 9; i++)
     Matter.Body.setPosition(gems[i].body, {
       x: ((i % 3) - 1) * 8.2,
-      y: -170 - Math.floor(i / 3) * 8.2,
+      y: -330 - Math.floor(i / 3) * 8.2,
     });
   const loose = gems[9];
-  Matter.Body.setPosition(loose.body, { x: 80, y: -150 });
+  Matter.Body.setPosition(loose.body, { x: 80, y: -300 });
   step(sim, 90);
   assert.ok(gems.slice(0, 9).every((g) => g.body.isSleeping));
-  assert.ok(loose.body.position.y > -140);
+  assert.ok(loose.body.position.y > -290);
   assert.ok(loose.body.position.x < 75);
 });

@@ -1,0 +1,207 @@
+/* Compact touch HUD. The detailed desktop layout lives in style.css. */
+#tools-toggle,
+#driving-buttons {
+  display: none;
+}
+#app:not(.button-driving) #touch-controls {
+  display: none;
+}
+@media (max-width: 700px), (pointer: coarse) and (max-height: 600px) {
+  #app {
+    --hud-top: max(10px, env(safe-area-inset-top));
+    --hud-bottom: max(12px, env(safe-area-inset-bottom));
+  }
+  .playing .brand,
+  .location,
+  .bottom-center {
+    display: none;
+  }
+  .topbar {
+    padding: var(--hud-top) 12px 0;
+    gap: 8px;
+  }
+  .playing .account {
+    margin: 0;
+    min-width: 120px;
+    max-width: calc(100vw - 128px);
+    padding: 6px 12px;
+    border-bottom-width: 2px;
+  }
+  .playing .account > span,
+  .playing .account small {
+    display: none;
+  }
+  .playing .account strong {
+    font-size: 30px;
+    line-height: 32px;
+    margin: 0;
+  }
+  .playing.save-unavailable .account small {
+    display: block;
+    font-size: 10px;
+  }
+  .tools {
+    top: var(--hud-top);
+    right: 12px;
+    gap: 6px;
+    z-index: 2;
+  }
+  .tools button {
+    width: 44px;
+    height: 44px;
+    font-size: 22px;
+  }
+  #tools-toggle {
+    display: block;
+  }
+  #driving-buttons {
+    display: block;
+  }
+  .tools #sound,
+  .tools #camera,
+  .tools #help {
+    display: none;
+  }
+  .tools-expanded .tools #sound,
+  .tools-expanded .tools #camera,
+  .tools-expanded .tools #help {
+    display: block;
+    position: absolute;
+    top: 50px;
+  }
+  .tools #sound {
+    right: 100px;
+  }
+  .tools #camera {
+    right: 50px;
+  }
+  .tools #help {
+    right: 0;
+  }
+  .sector-tag {
+    display: flex;
+    top: calc(var(--hud-top) + 57px);
+    left: 14px;
+    font-size: 10px;
+    letter-spacing: 1px;
+  }
+  .contract {
+    display: block;
+    top: calc(var(--hud-top) + 80px);
+    bottom: auto;
+    left: 12px;
+    width: 142px;
+    padding: 7px 9px;
+    pointer-events: none;
+  }
+  .contract .eyebrow,
+  .contract h2,
+  .contract p,
+  .contract-footer,
+  #collected {
+    display: none;
+  }
+  .contract .progress-line {
+    font-size: 12px;
+    margin: 0 0 5px;
+  }
+  #percent::after {
+    content: " cleared";
+  }
+  #cargo-hud {
+    top: calc(var(--hud-top) + 57px);
+    right: 12px;
+    width: min(166px, calc(100vw - 180px));
+    padding: 7px 9px;
+    border-left-width: 2px;
+  }
+  #cargo-hud > span,
+  #cargo-hud small {
+    display: none;
+  }
+  #cargo-hud::before {
+    content: attr(data-state);
+    display: block;
+    font-size: 10px;
+    line-height: 14px;
+  }
+  #cargo-hud > strong {
+    font-size: 22px;
+    line-height: 25px;
+    margin: 0 0 4px;
+  }
+  .tools-expanded #cargo-hud {
+    visibility: hidden;
+  }
+  .pad-guide {
+    bottom: var(--hud-bottom);
+    left: 12px;
+    right: 12px;
+    width: auto;
+    min-width: 0;
+    padding: 10px 12px;
+    border-bottom-width: 2px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .pad-guide > strong {
+    font-size: 20px;
+    margin: 0;
+  }
+  .pad-guide .eyebrow,
+  .pad-guide p,
+  .pad-guide > .progress-track,
+  .pad-guide #pad-paid {
+    display: none;
+  }
+  .pad-payment {
+    margin: 0;
+    font-size: 11px;
+  }
+  .pad-guide.nearby {
+    display: block;
+  }
+  .pad-guide.nearby .eyebrow {
+    display: block;
+    font-size: 10px;
+    margin-bottom: 3px;
+  }
+  .pad-guide.nearby p {
+    display: block;
+    font-size: 12px;
+    margin: 4px 0 7px;
+  }
+  .pad-guide.nearby > .progress-track,
+  .pad-guide.nearby #pad-paid {
+    display: block;
+  }
+  .pad-guide.nearby .pad-payment {
+    flex-direction: row;
+    margin-top: 6px;
+  }
+  .button-driving .pad-guide {
+    bottom: calc(var(--hud-bottom) + 168px);
+  }
+  #touch-controls {
+    bottom: var(--hud-bottom);
+    left: 12px;
+  }
+  .activity-open {
+    bottom: calc(var(--hud-bottom) + 58px);
+    left: 12px;
+    right: auto;
+    transform: none;
+    max-width: calc(100vw - 24px);
+  }
+  .button-driving .activity-open {
+    left: auto;
+    right: 12px;
+    bottom: var(--hud-bottom);
+  }
+  #toast {
+    top: calc(var(--hud-top) + 139px);
+    font-size: 12px;
+  }
+}
