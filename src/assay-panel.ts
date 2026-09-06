@@ -1,5 +1,5 @@
-import { crystalArt } from "./crystal-art";
-import { ASSAY_BETS, CRYSTALS, playAssay, type AssayResult } from "./assay";
+import { SlotReel } from "./slot-reel";
+import { ASSAY_BETS, playAssay, type AssayResult } from "./assay";
 import type { Progress } from "./progression";
 
 /** The panel owns reveal timers; the domain owns the already-settled wager. */
@@ -11,33 +11,8 @@ export function mountAssayPanel(
 ) {
   const area = document.createElement("section");
   area.className = "assay-game";
-  const symbol = (face: number, center = false) =>
-    '<div class="reel-symbol' +
-    (center ? " reel-symbol-center" : "") +
-    '">' +
-    crystalArt(face) +
-    "<span>" +
-    CRYSTALS[face] +
-    "</span></div>";
-  const restingReel = (face: number) =>
-    '<div class="reel-window"><div class="reel-neighbor" aria-hidden="true">' +
-    symbol((face + 3) % 4) +
-    "</div>" +
-    symbol(face, true) +
-    '<div class="reel-neighbor" aria-hidden="true">' +
-    symbol((face + 1) % 4) +
-    "</div></div>";
   const initialReels = [0, 1, 2]
-    .map(
-      (face) =>
-        '<div class="assay-reel" data-crystal="' +
-        face +
-        '" aria-label="' +
-        CRYSTALS[face] +
-        ', center payline">' +
-        restingReel(face) +
-        "</div>",
-    )
+    .map(() => '<div class="assay-reel"></div>')
     .join("");
   const celebration = Array.from(
     { length: 8 },
@@ -58,8 +33,9 @@ export function mountAssayPanel(
   let bet: number = 10,
     busy = false,
     balanceDuringSpin = 0;
-  const timers: number[] = [];
-  const animations: Animation[] = [];
+  const rollers = reels.map(
+    (reel, i) => new SlotReel(reel, p.lastAssay?.faces[i] ?? i),
+  );
   const refresh = () => {
     area.querySelector("#assay-balance")!.textContent =
       "$" + (busy ? balanceDuringSpin : p.money).toLocaleString("en-US");
@@ -73,13 +49,6 @@ export function mountAssayPanel(
       : bet > p.money
         ? "Collect more gems to play"
         : `Bet $${bet} & spin →`;
-  };
-  const showFace = (r: AssayResult, i: number) => {
-    const face = r.faces[i];
-    reels[i].classList.remove("turning");
-    reels[i].dataset.crystal = String(face);
-    reels[i].innerHTML = restingReel(face);
-    reels[i].setAttribute("aria-label", CRYSTALS[face] + ", center payline");
   };
   const highlightMatches = (r: AssayResult) => {
     const matching = r.faces.map(
@@ -104,7 +73,6 @@ export function mountAssayPanel(
         ? `A pair. Your $${r.bet} stake is returned.`
         : `No match. $${r.bet} spent; $0 returned.`;
   if (p.lastAssay) {
-    reels.forEach((_, i) => showFace(p.lastAssay!, i));
     result.textContent = "Last spin: " + describe(p.lastAssay);
     highlightMatches(p.lastAssay);
   } else result.textContent = "Choose a stake. Every spin is your call.";
@@ -126,63 +94,28 @@ export function mountAssayPanel(
     result.textContent = "Revealing your crystals…";
     area.classList.remove("assay-win", "assay-match");
     area.querySelector(".assay-line-label")!.textContent = "CENTER LINE PAYS";
-    reels.forEach((reel, i) => {
-      reel.classList.remove("reel-match");
-      reel.classList.add("turning");
-      const startFace = Number(reel.dataset.crystal);
-      const sequence = Array.from(
-        { length: 16 + i * 4 },
-        (_, j) => (startFace + 3 + j) % 4,
-      );
-      sequence.push(
-        (settled.faces[i] + 3) % 4,
+    const reducedMotion = matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+    let stopped = 0;
+    rollers.forEach((roller, i) => {
+      reels[i].classList.remove("reel-match");
+      roller.spin(
         settled.faces[i],
-        (settled.faces[i] + 1) % 4,
-      );
-      reel.innerHTML =
-        '<div class="reel-window"><div class="reel-strip">' +
-        sequence.map((face) => symbol(face)).join("") +
-        "</div></div>";
-      const strip = reel.querySelector<HTMLElement>(".reel-strip")!;
-      const height = reel
-        .querySelector<HTMLElement>(".reel-symbol")!
-        .getBoundingClientRect().height;
-      const duration = matchMedia("(prefers-reduced-motion: reduce)").matches
-        ? 100
-        : 1100 + i * 350;
-      animations.push(
-        strip.animate(
-          [
-            { transform: "translateY(0)" },
-            {
-              transform:
-                "translateY(-" + (sequence.length - 3) * height + "px)",
-            },
-          ],
-          { duration, easing: "cubic-bezier(.12,.7,.12,1)", fill: "forwards" },
-        ),
-      );
-      timers.push(
-        window.setTimeout(() => {
-          showFace(settled, i);
+        reducedMotion ? 0 : 4 + i,
+        reducedMotion ? 100 : 1400 + i * 350,
+        () => {
           sound(false);
-          if (i === 2) {
-            busy = false;
-            timers.length = 0;
-            animations.forEach((a) => a.cancel());
-            animations.length = 0;
-            result.textContent = describe(settled);
-            highlightMatches(settled);
-            if (settled.payout > settled.bet) sound(true);
-            refresh();
-          }
-        }, duration),
+          if (++stopped !== rollers.length) return;
+          busy = false;
+          result.textContent = describe(settled);
+          highlightMatches(settled);
+          if (settled.payout > settled.bet) sound(true);
+          refresh();
+        },
       );
     });
   });
   refresh();
-  return () => {
-    timers.forEach(clearTimeout);
-    animations.forEach((a) => a.cancel());
-  };
+  return () => rollers.forEach((roller) => roller.cancel());
 }

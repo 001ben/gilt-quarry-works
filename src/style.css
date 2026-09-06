@@ -1639,12 +1639,12 @@ kbd {
   width: 72px;
   height: 73px;
 }
-.reel-neighbor .reel-symbol {
-  opacity: 0.38;
-  transform: scale(0.76);
+.reel-strip .reel-symbol {
+  opacity: calc(0.38 + var(--reel-focus, 0) * 0.62);
+  transform: scale(calc(0.76 + var(--reel-focus, 0) * 0.24));
 }
-.reel-neighbor .reel-symbol span {
-  visibility: hidden;
+.reel-strip .reel-symbol span {
+  opacity: var(--reel-focus, 0);
 }
 .reel-window::after {
   content: "";

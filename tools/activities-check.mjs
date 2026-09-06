@@ -85,7 +85,33 @@ try {
     settled.progress.lastAssay,
   );
 
-  // Verify the new rolling strips move, stop at the settled faces, and clean up.
+  // Sample every animation frame: no cleared windows, replacement nodes, or timer snap.
+  await page.evaluate(() => {
+    const reels = [...document.querySelectorAll(".assay-reel")];
+    window.reelNodes = reels.map((r) => r.querySelector(".reel-strip"));
+    window.reelTrace = { frames: 0, blanks: 0, replaced: 0, running: true };
+    const sample = () => {
+      const trace = window.reelTrace;
+      trace.frames++;
+      for (const [i, reel] of reels.entries()) {
+        if (reel.querySelector(".reel-strip") !== window.reelNodes[i])
+          trace.replaced++;
+        const windowRect = reel
+          .querySelector(".reel-window")
+          .getBoundingClientRect();
+        const visible = [...reel.querySelectorAll(".reel-crystal")].filter(
+          (icon) => {
+            const r = icon.getBoundingClientRect();
+            return r.bottom > windowRect.top && r.top < windowRect.bottom;
+          },
+        );
+        if (visible.length < 2) trace.blanks++;
+      }
+      if (trace.running) requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+  });
+  // Verify the repeating belts move and stop at the settled faces.
   await page.evaluate(() => {
     window.originalRandom = crypto.getRandomValues.bind(crypto);
     crypto.getRandomValues = (array) => {
@@ -108,9 +134,19 @@ try {
     .evaluate((e) => getComputedStyle(e).transform);
   assert.notEqual(firstTransform, nextTransform);
   await page.screenshot({ path: ".local/assay-spinning.png" });
-  await page.waitForTimeout(1900);
+  await page.setViewportSize({ width: 844, height: 390 });
+  await page.waitForTimeout(100);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForTimeout(2200);
+  const trace = await page.evaluate(() => {
+    window.reelTrace.running = false;
+    return window.reelTrace;
+  });
+  assert.ok(trace.frames > 10);
+  assert.equal(trace.blanks, 0);
+  assert.equal(trace.replaced, 0);
   assert.match(await page.locator("#assay-result").innerText(), /Triple!/);
-  assert.equal(await page.locator(".reel-strip").count(), 0);
+  assert.equal(await page.locator(".reel-strip").count(), 3);
   assert.equal(await page.locator("#assay-spin").isEnabled(), true);
   await page.locator("#panel").evaluate((e) => (e.scrollTop = 0));
   await page.screenshot({ path: ".local/assay-win.png" });
@@ -150,7 +186,7 @@ try {
     await page.evaluate(() => {
       crypto.getRandomValues = window.originalRandom;
     });
-    await page.waitForTimeout(1950);
+    await page.waitForTimeout(2250);
     const highlighted = await page
       .locator(".assay-reel")
       .evaluateAll((reels) =>
